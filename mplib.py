@@ -26,7 +26,7 @@ playerlimit = b'FULL'
 - ubyte  gravity well radiation energy
 - ubyte  bullet damage
 '''
-configstruct = '>BhhhhhhhhHHHHB'
+configstruct = '>BhhhhhhhhHHHHBB'
 
 '''
 - short player x

@@ -27,6 +27,7 @@ while True:
         for client in timed_out:
             # if 'partner' in clients[client]:  # honestly, the timeout is such that the 'partner' is long aware of their absence...
             del clients[client]
+            print('a client timed out. Current player count:', len(clients))
 
         if addr not in clients:
             if msg != mplib.clienthello:
@@ -53,7 +54,11 @@ while True:
                     if 'partner' in clients[addr]:
                         sock.sendto(msg, clients[addr]['partner'])
                         del clients[clients[addr]['partner']]
-                    del clients[addr]
+                        del clients[addr]
+                        print('a client quit. We also killed their partner. Current player count:', len(clients))
+                    else:
+                        del clients[addr]
+                        print('a client quit. Current player count:', len(clients))
                 continue
 
             clients[addr]['lastseen'] = time.time()

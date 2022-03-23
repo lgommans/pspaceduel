@@ -69,8 +69,14 @@ class Player:
             self.pos['x'] += self.speed['x'] / GRAVITATIONSTEPS
             self.pos['y'] += self.speed['y'] / GRAVITATIONSTEPS
 
-            if separation < gravitywellrect.width / 2:  # assumed to be spherical
-                playerDied()
+            if playerNumber == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
+                playerDied(self.n)
+                return
+
+            if checkPlayerDistance(self.rect.width):
+                # If you run into each other, you both die. Should have run, you fools
+                playerDied(playerNumber)
+                playerDied(2 if playerNumber == 1 else 1)
 
         self.rect.left = roundi(self.pos['x'])
         self.rect.top = roundi(self.pos['y'])
@@ -79,15 +85,26 @@ class Player:
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
 
 
-def playerDied():
+def checkPlayerDistance(minSeparation):
+    sep_x = players[0].pos['x'] - players[1].pos['x']
+    sep_y = players[0].pos['y'] - players[1].pos['y']
+    return ((sep_x * sep_x) + (sep_y * sep_y)) < minSeparation
+
+
+def playerDied(numberdied):
     global statusmessage, state
 
-    if not SINGLEPLAYER:
-        # TODO
-        pass
-
-    statusmessage = 'You died'
-    state = STATE_DEAD
+    if state == STATE_DEAD:
+        statusmessage = 'Tied'
+    else:
+        state = STATE_DEAD
+        if playerNumber == numberdied:
+            statusmessage = 'You died'
+            if not SINGLEPLAYER:
+                sock.sendto(b'\x01', SERVER)
+                pass
+        else:
+            statusmessage = 'You won'
 
 
 def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
@@ -115,7 +132,7 @@ FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
 SERVER = ('127.0.0.1', 9473)
-SINGLEPLAYER = True
+SINGLEPLAYER = False
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
@@ -156,7 +173,7 @@ fpslimiter = pygame.time.Clock()
 
 screen = pygame.display.set_mode(SCREENSIZE)
 
-playerNumber = None  # chosen by server, can be 1 or 2
+playerNumber = None  # 1 or 2, chosen by server
 
 if SINGLEPLAYER:
     playerNumber = 1
@@ -199,6 +216,8 @@ while True:
             if msg == mplib.urplayerone:
                 statusmessage = 'Server connection established. Waiting for another player to join this server...'
                 playerNumber = 1
+                players[0].n = 1
+                players[1].n = 2
             elif msg == mplib.playerfound:
                 state = STATE_MATCHED
                 reply = struct.pack(mplib.configstruct,
@@ -223,6 +242,8 @@ while True:
             elif msg == mplib.urplayertwo:
                 statusmessage = 'Server found a match! Waiting for the other player to send game data...'
                 playerNumber = 2
+                players[0].n = 2
+                players[1].n = 1
                 state = STATE_MATCHED
             else:
                 statusmessage = 'Server protocol error, please restart the game.'
@@ -259,12 +280,14 @@ while True:
                 'y': p2startyspeed / 100,
             }
             state = STATE_PLAYERING
+            statusmessage = ''
 
         elif state == STATE_PLAYERING:
             if msg.startswith(mplib.playerquits):
+                print('other player quit for reason:', msg)
                 statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
-            else:
-                x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg)
+            elif msg[0] == 0:
+                x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg[1 : ])
                 players[1].angle = angle * 1.5
                 players[1].pos = {
                     'x': x,
@@ -275,6 +298,8 @@ while True:
                     'y': yspeed / 100,
                 }
                 players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
+            elif msg[0] == 1:
+                playerDied(1 if playerNumber == 2 else 2)
 
 
     for event in pygame.event.get():
@@ -323,7 +348,7 @@ while True:
             pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos['y'] - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
 
         if not SINGLEPLAYER:
-            msg = struct.pack(mplib.updatestruct,
+            msg = b'\x00' + struct.pack(mplib.updatestruct,
                 roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos['x']))),
                 roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos['y']))),
                 roundi(min(1000, max(-1000, players[0].speed['x'] * 100))),
@@ -339,6 +364,8 @@ while True:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
         surface = font_statusMsg.render(msgpart, True, (0, 30, 174))
         screen.blit(surface, (10, 50))
+    surface = font_statusMsg.render('playerNumber=' + str(playerNumber) + '  state=' + str(state), True, (0, 30, 174))
+    screen.blit(surface, (0, 0))
 
     pygame.display.flip()
     fpslimiter.tick(FPS)
