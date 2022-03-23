@@ -33,6 +33,7 @@ class Player:
         rect = img.get_rect()
 
         self.n = n
+        self.seqno = 0
         self.img = pygame.transform.scale(img, (roundi(rect.width * Player.SCALE[0]), roundi(rect.height * Player.SCALE[1])))
         self.rect = self.img.get_rect()
         self.angle = 0  # 0-360
@@ -200,12 +201,10 @@ if SINGLEPLAYER:
 
 while True:
     if not SINGLEPLAYER:
-        starttime = time.time()
         try:
             msg, addr = sock.recvfrom(mplib.maximumsize)
         except BlockingIOError:
             msg = b''
-        print('recvfromtime:', time.time() - starttime, ' msglen:', len(msg))
         if msg == b'':
             pass  # no multiplayer updates
         elif state == STATE_HELLOSENT:
@@ -292,7 +291,12 @@ while True:
                 print('other player quit for reason:', msg)
                 statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
             elif msg[0] == 0:
-                x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg[1 : ])
+                seqno, x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg[1 : ])
+                if seqno <= players[1].seqno:
+                    print('ERRRRRR Received seqno', seqno, ' last seqno for this player was', players[1].seqno)
+                else:
+                    print('Received seqno', seqno, ' last seqno for this player was', players[1].seqno)
+                players[1].seqno = seqno
                 players[1].angle = angle * 1.5
                 players[1].pos = {
                     'x': x,
@@ -355,6 +359,7 @@ while True:
 
         if not SINGLEPLAYER:
             msg = b'\x00' + struct.pack(mplib.updatestruct,
+                players[0].seqno,
                 roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos['x']))),
                 roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos['y']))),
                 roundi(min(1000, max(-1000, players[0].speed['x'] * 100))),
@@ -362,10 +367,8 @@ while True:
                 roundi(players[0].angle / 1.5),
                 roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
             )
-            starttime = time.time()
+            players[0].seqno += 1
             threading.Thread(target=sendto, args=(sock, msg, SERVER)).start()
-            sock.sendto(msg, SERVER)
-            print('sendtotime:', time.time() - starttime)
 
     screen.blit(gravitywell, gravitywellrect)
 
@@ -377,6 +380,6 @@ while True:
     screen.blit(surface, (0, 0))
 
     pygame.display.flip()
-    fpslimiter.tick(FPS)
-    print('frametime', frametime)
+    tmpframetime = fpslimiter.tick(FPS)
+    print('frametime', tmpframetime)
 
