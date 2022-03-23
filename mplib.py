@@ -29,6 +29,7 @@ playerlimit = b'FULL'
 configstruct = '>BhhhhhhhhHHHHBB'
 
 '''
+- uint   sequence number
 - short player x
 - short player y
 - short player xspeed in hundredths
@@ -36,5 +37,5 @@ configstruct = '>BhhhhhhhhHHHHBB'
 - ubyte player angle/1.5
 - ubyte player battery level as a percentage 0 through 255
 '''
-updatestruct = '>hhhhBB'
+updatestruct = '>IhhhhBB'
 
