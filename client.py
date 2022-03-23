@@ -5,35 +5,47 @@ import pygame
 import mplib
 from luclib import *
 
+class Bullet:
+    DAMAGE = 0.1
+
+
 class Player:
-    SCALE = (0.2, 0.2)
-    ROTATIONAL_SPEED = 3
+    SCALE = (0.25, 0.25)
+    INDICATORHEIGHT = 0.18  # as a fraction of the player height after scaling
+    INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
+    ROTATIONAL_SPEED = 4
     MASS = 100  # kg
-    P1_START_X = 200
+    P1_START_X = 300
     P1_START_Y = 400
-    P1_START_XSPEED = 4
+    P1_START_XSPEED = 2
     P1_START_YSPEED = -2
     P2_START_X = 900
     P2_START_Y = 800
-    P2_START_XSPEED = -4
+    P2_START_XSPEED = -2
     P2_START_YSPEED = 2
-    BATTERY_CAPACITY = 100
-    THRUST = 1000  # Newtons
+    BATTERY_CAPACITY = 100  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
+    # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
+    THRUST = 750  # Newtons
+    THRUST_PER_kJ = 1500  # newtons you get out of each kJ
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
         rect = img.get_rect()
 
         self.n = n
-        self.img = pygame.transform.scale(img, (int(round(rect.width * Player.SCALE[0])), int(round(rect.height * Player.SCALE[1]))))
+        self.img = pygame.transform.scale(img, (roundi(rect.width * Player.SCALE[0]), roundi(rect.height * Player.SCALE[1])))
         self.rect = self.img.get_rect()
-        self.angle = 0
+        self.angle = 0  # 0-360
+        self.health = 1  # 0-1
         self.pos = None  # initialized when round starts
         self.speed = None
+        self.batterylevel = Player.BATTERY_CAPACITY
 
     def thrust(self):
-        self.speed['x'] += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
-        self.speed['y'] += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+        if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
+            self.speed['x'] += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.speed['y'] += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
         blitRotateCenter(screen, self.img, (self.rect.left, self.rect.top), self.angle)
@@ -42,23 +54,44 @@ class Player:
         self.angle += direction * Player.ROTATIONAL_SPEED
         self.angle %= 360
 
-    def gravity(self, towards_pos, towards_mass):
+    def update(self, towards_pos, towards_mass):
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
-        separation_x = self.rect.x - towards_pos[0]
-        separation_y = self.rect.y - towards_pos[1]
-        separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-        grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
-        dir_x = separation_x / separation
-        dir_y = separation_y / separation
-        self.speed['x'] -= grav_accel / Player.MASS * dir_x
-        self.speed['y'] -= grav_accel / Player.MASS * dir_y
+        for i in range(GRAVITATIONSTEPS):
+            separation_x = self.rect.x - towards_pos[0]
+            separation_y = self.rect.y - towards_pos[1]
+            separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
+            grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
+            dir_x = separation_x / separation
+            dir_y = separation_y / separation
+            self.speed['x'] -= grav_accel / Player.MASS * dir_x
+            self.speed['y'] -= grav_accel / Player.MASS * dir_y
+            self.pos['x'] += self.speed['x'] / GRAVITATIONSTEPS
+            self.pos['y'] += self.speed['y'] / GRAVITATIONSTEPS
 
-    def update(self):
-        self.pos['x'] += self.speed['x']
-        self.pos['y'] += self.speed['y']
-        self.rect.left = self.pos['x']
-        self.rect.top = self.pos['y']
+            if separation < gravitywellrect.width / 2:  # assumed to be spherical
+                playerDied()
+
+        self.rect.left = roundi(self.pos['x'])
+        self.rect.top = roundi(self.pos['y'])
+
+        radiative_power = gravitywell_radiation_1km / (separation * separation) * 1000
+        self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
+
+
+def playerDied():
+    global statusmessage, state
+
+    if not SINGLEPLAYER:
+        # TODO
+        pass
+
+    statusmessage = 'You died'
+    state = STATE_DEAD
+
+
+def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
+    return int(round(n))
 
 
 def blitRotateCenter(surf, image, pos, angle):
@@ -69,32 +102,42 @@ def blitRotateCenter(surf, image, pos, angle):
 
 
 def stopgame(reason, exitstatus=0):
-    sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
+    if not SINGLEPLAYER:
+        sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
     sys.exit(exitstatus)
 
 
 GAMEVERSION = 1
 GRAVITYCONSTANT = 6.6742e-11
+GRAVITATIONSTEPS = 10
 SCREENSIZE = (1440, 900)
 FPS = 60
 FRAMETIME = 1 / FPS
-FTGC = FRAMETIME * GRAVITYCONSTANT
+FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
 SERVER = ('127.0.0.1', 9473)
+SINGLEPLAYER = True
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
 STATE_MATCHED   = 3
 STATE_PLAYERING = 4
+STATE_DEAD      = 5
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setblocking(0)
-sock.sendto(mplib.clienthello, SERVER)
-mptoken = None
-state = STATE_HELLOSENT
-statusmessage = 'Waiting for server initial response...'
+if not SINGLEPLAYER:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(0)
+    sock.sendto(mplib.clienthello, SERVER)
+    mptoken = None
+    state = STATE_HELLOSENT
+    statusmessage = 'Waiting for server initial response...'
+else:
+    statusmessage = ''
 
-pygame.init()
-font = pygame.font.SysFont(None, 48)
+# don't just pygame.init() because it will hang and not quit when you do pygame.quit();sys.exit();. Stackoverflow suggests in 2013 this was a Wheezy bug, but it works on a
+# newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is literally 20 times faster (0.02 instead of 0.4 s) anyway!
+pygame.display.init()
+pygame.font.init()
+font_statusMsg = pygame.font.SysFont(None, 48)
 
 players = [
     Player(1),
@@ -102,107 +145,136 @@ players = [
 ]
 
 gravitywell = pygame.image.load(f'res/sun.png')
-gravitywell_mass = 1e16
+gravitywell_mass = 5e15
 gravitywellrect = gravitywell.get_rect()
-gravitywellrect.left = (SCREENSIZE[0] / 2) - (gravitywellrect.width / 2)
-gravitywellrect.top = (SCREENSIZE[1] / 2) - (gravitywellrect.height / 2)
+gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
+gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
 gravitywell_center = (SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
+gravitywell_radiation_1km = 10  # How many kW the spacecraft practically get at 1 km (pixel) distance (considering solar panel size and effiency)
 
 fpslimiter = pygame.time.Clock()
 
 screen = pygame.display.set_mode(SCREENSIZE)
 
-playerNumber = None  # basically chosen by server, can be 1 or 2
+playerNumber = None  # chosen by server, can be 1 or 2
+
+if SINGLEPLAYER:
+    playerNumber = 1
+    players[0].pos = {
+        'x': Player.P1_START_X,
+        'y': Player.P1_START_Y,
+    }
+    players[0].speed = {
+        'x': Player.P1_START_XSPEED,
+        'y': Player.P1_START_YSPEED,
+    }
+    players[1].pos = {
+        'x': Player.P2_START_X,
+        'y': Player.P2_START_Y,
+    }
+    players[1].speed = {
+        'x': Player.P2_START_XSPEED,
+        'y': Player.P2_START_YSPEED,
+    }
+    state = STATE_PLAYERING
 
 while True:
-    try:
-        msg, addr = sock.recvfrom(mplib.maximumsize)
-    except BlockingIOError:
-        msg = b''
-    if msg == b'':
-        pass  # no multiplayer updates
-    elif state == STATE_HELLOSENT:
-        if msg[0 : len(mplib.serverhello)] == mplib.serverhello:
-            mptoken = msg[len(mplib.serverhello) : ]
-            sock.sendto(mptoken, SERVER)
-            state = STATE_TOKENSENT
-            statusmessage = 'Completing server handshake...'
-        else:
-            statusmessage = 'Server protocol error, please restart the game.'
+    if not SINGLEPLAYER:
+        try:
+            msg, addr = sock.recvfrom(mplib.maximumsize)
+        except BlockingIOError:
+            msg = b''
+        if msg == b'':
+            pass  # no multiplayer updates
+        elif state == STATE_HELLOSENT:
+            if msg[0 : len(mplib.serverhello)] == mplib.serverhello:
+                mptoken = msg[len(mplib.serverhello) : ]
+                sock.sendto(mptoken, SERVER)
+                state = STATE_TOKENSENT
+                statusmessage = 'Completing server handshake...'
+            else:
+                statusmessage = 'Server protocol error, please restart the game.'
 
-    elif state == STATE_TOKENSENT:
-        if msg == mplib.urplayerone:
-            statusmessage = 'Server connection established. Waiting for another player to join this server...'
-            playerNumber = 1
-        elif msg == mplib.playerfound:
-            state = STATE_MATCHED
-            reply = struct.pack(mplib.configstruct,
-                GAMEVERSION,
-                Player.P1_START_X,
-                Player.P1_START_Y,
-                int(round(Player.P1_START_XSPEED * 100)),
-                int(round(Player.P1_START_YSPEED * 100)),
-                Player.P2_START_X,
-                Player.P2_START_Y,
-                int(round(Player.P2_START_XSPEED * 100)),
-                int(round(Player.P2_START_YSPEED * 100)),
-                Player.BATTERY_CAPACITY,
-                Player.THRUST,
-                int(round(math.log(gravitywell_mass, 1.1))),
-            )
-            sock.sendto(reply, SERVER)
-            sock.sendto(reply, sock.getsockname())  # also send it to ourselves
-        elif msg == mplib.urplayertwo:
-            statusmessage = 'Server found a match! Waiting for the other player to send game data...'
-            playerNumber = 2
-            state = STATE_MATCHED
-        else:
-            statusmessage = 'Server protocol error, please restart the game.'
-            print('Got from server:', msg)
+        elif state == STATE_TOKENSENT:
+            if msg == mplib.urplayerone:
+                statusmessage = 'Server connection established. Waiting for another player to join this server...'
+                playerNumber = 1
+            elif msg == mplib.playerfound:
+                state = STATE_MATCHED
+                reply = struct.pack(mplib.configstruct,
+                    GAMEVERSION,
+                    Player.P1_START_X,
+                    Player.P1_START_Y,
+                    roundi(Player.P1_START_XSPEED * 100),
+                    roundi(Player.P1_START_YSPEED * 100),
+                    Player.P2_START_X,
+                    Player.P2_START_Y,
+                    roundi(Player.P2_START_XSPEED * 100),
+                    roundi(Player.P2_START_YSPEED * 100),
+                    Player.BATTERY_CAPACITY,
+                    Player.THRUST,
+                    Player.THRUST_PER_kJ,
+                    roundi(math.log(gravitywell_mass, 1.1)),
+                    roundi(gravitywell_radiation_1km),
+                    roundi(Bullet.DAMAGE * 255),
+                )
+                sock.sendto(reply, SERVER)
+                sock.sendto(reply, sock.getsockname())  # also send it to ourselves
+            elif msg == mplib.urplayertwo:
+                statusmessage = 'Server found a match! Waiting for the other player to send game data...'
+                playerNumber = 2
+                state = STATE_MATCHED
+            else:
+                statusmessage = 'Server protocol error, please restart the game.'
+                print('Got from server:', msg)
 
-    elif state == STATE_MATCHED:
-        gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, gwmass \
-            = struct.unpack(mplib.configstruct, msg)
+        elif state == STATE_MATCHED:
+            gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, thrustperkj, gwmass, gwrad, bulletdmg \
+                = struct.unpack(mplib.configstruct, msg)
 
-        if GAMEVERSION != gameversion:
-            print('Incompatible game version', gameversion)
-            stopgame(reason='Incompatible version', exitstatus=2)
+            if GAMEVERSION != gameversion:
+                print('Incompatible game version', gameversion)
+                stopgame(reason='Incompatible version', exitstatus=2)
 
-        Player.BATTERY_CAPACITY = batcap
-        Player.THRUST = enginethrust
-        gravitywell_mass = pow(1.1, gwmass)
-        players[0 if playerNumber == 1 else 1].pos = {
-            'x': p1startx,
-            'y': p1starty,
-        }
-        players[0 if playerNumber == 1 else 1].speed = {
-            'x': p1startxspeed / 100,
-            'y': p1startyspeed / 100,
-        }
-        players[1 if playerNumber == 1 else 0].pos = {
-            'x': p2startx,
-            'y': p2starty,
-        }
-        players[1 if playerNumber == 1 else 0].speed = {
-            'x': p2startxspeed / 100,
-            'y': p2startyspeed / 100,
-        }
-        state = STATE_PLAYERING
-
-    elif state == STATE_PLAYERING:
-        if msg.startswith(mplib.playerquits):
-            statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
-        else:
-            x, y, xspeed, yspeed, angle = struct.unpack(mplib.updatestruct, msg)
-            players[1].angle = angle * 1.5
-            players[1].pos = {
-                'x': x,
-                'y': y,
+            Player.BATTERY_CAPACITY = batcap
+            Player.THRUST = enginethrust
+            Player.THRUST_PER_kJ = thrustperkj
+            Bullet.DAMAGE = bulletdmg / 255
+            gravitywell_mass = pow(1.1, gwmass)
+            gravitywell_radiation_1km = gwrad
+            players[0 if playerNumber == 1 else 1].pos = {
+                'x': p1startx,
+                'y': p1starty,
             }
-            players[1].speed = {
-                'x': xspeed / 100,
-                'y': yspeed / 100,
+            players[0 if playerNumber == 1 else 1].speed = {
+                'x': p1startxspeed / 100,
+                'y': p1startyspeed / 100,
             }
+            players[1 if playerNumber == 1 else 0].pos = {
+                'x': p2startx,
+                'y': p2starty,
+            }
+            players[1 if playerNumber == 1 else 0].speed = {
+                'x': p2startxspeed / 100,
+                'y': p2startyspeed / 100,
+            }
+            state = STATE_PLAYERING
+
+        elif state == STATE_PLAYERING:
+            if msg.startswith(mplib.playerquits):
+                statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
+            else:
+                x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg)
+                players[1].angle = angle * 1.5
+                players[1].pos = {
+                    'x': x,
+                    'y': y,
+                }
+                players[1].speed = {
+                    'x': xspeed / 100,
+                    'y': yspeed / 100,
+                }
+                players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
 
 
     for event in pygame.event.get():
@@ -222,24 +294,50 @@ while True:
             players[0].thrust()
 
         for player in players:
+            player.update(gravitywell_center, gravitywell_mass)
             player.draw(screen)
-            player.gravity(gravitywell_center, gravitywell_mass)
-            player.update()
 
-        msg = struct.pack(mplib.updatestruct,
-            int(round(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos['x'])))),
-            int(round(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos['y'])))),
-            int(round(min(1000, max(-1000, players[0].speed['x'] * 100)))),
-            int(round(min(1000, max(-1000, players[0].speed['y'] * 100)))),
-            int(round(players[0].angle / 1.5)),
-        )
-        sock.sendto(msg, SERVER)
+            w, h = player.rect.width, player.rect.height
+            x, y = player.pos['x'] + (w / 2), player.pos['y'] + (h / 2)
+            idis = h * Player.INDICATORDISTANCE
+
+            # Draw battery level indicators
+            bl = player.batterylevel / Player.BATTERY_CAPACITY
+            poweryellow = (255, 200, 0)
+            indicatorcolor = poweryellow if player.batterylevel > Player.THRUST / Player.THRUST_PER_kJ else (255, 0, 0)
+            # outer rectangle
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos['y'] + h + idis + 1), roundi((w * 2 + 2)), roundi(h * Player.INDICATORHEIGHT + 2)))
+            # inner black area (same area as above but -1px on each side)
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos['y'] + h + idis + 2), roundi((w * 2 + 0)), roundi(h * Player.INDICATORHEIGHT + 0)))
+            # battery level (drawn over the black area)
+            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos['y'] + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * Player.INDICATORHEIGHT + 0)))
+
+            # Draw health indicators
+            healthgreen = (10, 230, 10)
+            indicatorcolor = healthgreen if player.health > Bullet.DAMAGE else (255, 100, 0)
+            # outer rectangle
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos['y'] - idis - 2), roundi((w * 2 + 2)),                 roundi(h * Player.INDICATORHEIGHT + 2)))
+            # inner black area (same area as above but -1px on each side)
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos['y'] - idis - 1), roundi((w * 2 + 0)),                 roundi(h * Player.INDICATORHEIGHT + 0)))
+            # health level (drawn over the black area)
+            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos['y'] - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
+
+        if not SINGLEPLAYER:
+            msg = struct.pack(mplib.updatestruct,
+                roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos['x']))),
+                roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos['y']))),
+                roundi(min(1000, max(-1000, players[0].speed['x'] * 100))),
+                roundi(min(1000, max(-1000, players[0].speed['y'] * 100))),
+                roundi(players[0].angle / 1.5),
+                roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
+            )
+            sock.sendto(msg, SERVER)
 
     screen.blit(gravitywell, gravitywellrect)
 
     if len(statusmessage) > 0:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
-        surface = font.render(msgpart, True, (0, 30, 174))
+        surface = font_statusMsg.render(msgpart, True, (0, 30, 174))
         screen.blit(surface, (10, 50))
 
     pygame.display.flip()

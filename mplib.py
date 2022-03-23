@@ -21,9 +21,12 @@ playerlimit = b'FULL'
 - short  player 2 yspeed in hundredths
 - ushort battery capacity
 - ushort engine thrust
+- ushort thrust per kJ
 - ushort gravity well mass as a power to 1.1
+- ubyte  gravity well radiation energy
+- ubyte  bullet damage
 '''
-configstruct = '>BhhhhhhhhHHH'
+configstruct = '>BhhhhhhhhHHHHB'
 
 '''
 - short player x
@@ -31,6 +34,7 @@ configstruct = '>BhhhhhhhhHHH'
 - short player xspeed in hundredths
 - short player yspeed in hundredths
 - ubyte player angle/1.5
+- ubyte player battery level as a percentage 0 through 255
 '''
-updatestruct = '>hhhhB'
+updatestruct = '>hhhhBB'
 
