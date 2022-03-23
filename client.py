@@ -368,5 +368,5 @@ while True:
     screen.blit(surface, (0, 0))
 
     pygame.display.flip()
-    fpslimiter.tick(FPS)
+    print(fpslimiter.tick(FPS))
 
