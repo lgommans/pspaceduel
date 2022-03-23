@@ -324,7 +324,8 @@ while True:
             players[0].thrust()
 
         for player in players:
-            player.update(gravitywell_center, gravitywell_mass)
+            if player.n == playerNumber:
+                player.update(gravitywell_center, gravitywell_mass)
             player.draw(screen)
 
             w, h = player.rect.width, player.rect.height
