@@ -238,7 +238,7 @@ while True:
                     roundi(Bullet.DAMAGE * 255),
                 )
                 sock.sendto(reply, SERVER)
-                sock.sendto(reply, sock.getsockname())  # also send it to ourselves
+                sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
             elif msg == mplib.urplayertwo:
                 statusmessage = 'Server found a match! Waiting for the other player to send game data...'
                 playerNumber = 2
