@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, math, socket, time, struct
+import sys, math, socket, time, struct, threading
 import pygame
 import mplib
 from luclib import *
@@ -43,8 +43,8 @@ class Player:
 
     def thrust(self):
         if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
-            self.speed['x'] += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
-            self.speed['y'] += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.speed['x'] += lengthdir_x(Player.THRUST * frametime / Player.MASS, self.angle)
+            self.speed['y'] += lengthdir_y(Player.THRUST * frametime / Player.MASS, self.angle)
             self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
@@ -61,7 +61,7 @@ class Player:
             separation_x = self.rect.x - towards_pos[0]
             separation_y = self.rect.y - towards_pos[1]
             separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-            grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
+            grav_accel = Player.MASS * towards_mass / (separation * separation) * (frametime * GRAVITYCONSTANT / GRAVITATIONSTEPS)
             dir_x = separation_x / separation
             dir_y = separation_y / separation
             self.speed['x'] -= grav_accel / Player.MASS * dir_x
@@ -124,14 +124,17 @@ def stopgame(reason, exitstatus=0):
     sys.exit(exitstatus)
 
 
+def sendto(sock, msg, server):
+    sock.sendto(msg, server)
+
+
 GAMEVERSION = 1
 GRAVITYCONSTANT = 6.6742e-11
 GRAVITATIONSTEPS = 10
 SCREENSIZE = (1440, 900)
 FPS = 60
-FRAMETIME = 1 / FPS
-FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
-SERVER = ('lucgommans.nl', 9473)
+frametime = 1 / FPS
+SERVER = ('127.0.0.1', 9473)
 SINGLEPLAYER = False
 
 STATE_HELLOSENT = 1
@@ -197,10 +200,12 @@ if SINGLEPLAYER:
 
 while True:
     if not SINGLEPLAYER:
+        starttime = time.time()
         try:
             msg, addr = sock.recvfrom(mplib.maximumsize)
         except BlockingIOError:
             msg = b''
+        print('recvfromtime:', time.time() - starttime, ' msglen:', len(msg))
         if msg == b'':
             pass  # no multiplayer updates
         elif state == STATE_HELLOSENT:
@@ -356,7 +361,10 @@ while True:
                 roundi(players[0].angle / 1.5),
                 roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
             )
+            starttime = time.time()
+            threading.Thread(target=sendto, args=(sock, msg, SERVER)).start()
             sock.sendto(msg, SERVER)
+            print('sendtotime:', time.time() - starttime)
 
     screen.blit(gravitywell, gravitywellrect)
 
@@ -368,5 +376,6 @@ while True:
     screen.blit(surface, (0, 0))
 
     pygame.display.flip()
-    print(fpslimiter.tick(FPS))
+    fpslimiter.tick(FPS)
+    print('frametime', frametime)
 
