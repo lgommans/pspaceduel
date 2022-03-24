@@ -44,8 +44,8 @@ class Player:
 
     def thrust(self):
         if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
-            self.speed['x'] += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
-            self.speed['y'] += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.speed.x += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.speed.y += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
             self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
@@ -59,16 +59,16 @@ class Player:
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
         for i in range(GRAVITATIONSTEPS):
-            separation_x = self.pos['x'] - towards_pos[0]
-            separation_y = self.pos['y'] - towards_pos[1]
+            separation_x = self.pos.x - towards_pos[0]
+            separation_y = self.pos.y - towards_pos[1]
             separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
             grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
             dir_x = separation_x / separation
             dir_y = separation_y / separation
-            self.speed['x'] -= grav_accel / Player.MASS * dir_x
-            self.speed['y'] -= grav_accel / Player.MASS * dir_y
-            self.pos['x'] += self.speed['x'] / GRAVITATIONSTEPS
-            self.pos['y'] += self.speed['y'] / GRAVITATIONSTEPS
+            self.speed.x -= grav_accel / Player.MASS * dir_x
+            self.speed.y -= grav_accel / Player.MASS * dir_y
+            self.pos.x += self.speed.x / GRAVITATIONSTEPS
+            self.pos.y += self.speed.y / GRAVITATIONSTEPS
 
             if playerNumber == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
                 playerDied(self.n)
@@ -79,16 +79,16 @@ class Player:
                 playerDied(playerNumber)
                 playerDied(2 if playerNumber == 1 else 1)
 
-        self.rect.left = roundi(self.pos['x'])
-        self.rect.top = roundi(self.pos['y'])
+        self.rect.left = roundi(self.pos.x)
+        self.rect.top = roundi(self.pos.y)
 
         radiative_power = gravitywell_radiation_1km / (separation * separation) * 1000
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
 
 
 def checkPlayerDistance(minSeparation):
-    sep_x = players[0].pos['x'] - players[1].pos['x']
-    sep_y = players[0].pos['y'] - players[1].pos['y']
+    sep_x = players[0].pos.x - players[1].pos.x
+    sep_y = players[0].pos.y - players[1].pos.y
     return ((sep_x * sep_x) + (sep_y * sep_y)) < minSeparation
 
 
@@ -137,7 +137,7 @@ FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
 SERVER = ('127.0.0.1', 9473)
-SINGLEPLAYER = False
+SINGLEPLAYER = True
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
@@ -184,22 +184,10 @@ players[0].seqno += 1
 
 if SINGLEPLAYER:
     playerNumber = 1
-    players[0].pos = {
-        'x': Player.P1_START_X,
-        'y': Player.P1_START_Y,
-    }
-    players[0].speed = {
-        'x': Player.P1_START_XSPEED,
-        'y': Player.P1_START_YSPEED,
-    }
-    players[1].pos = {
-        'x': Player.P2_START_X,
-        'y': Player.P2_START_Y,
-    }
-    players[1].speed = {
-        'x': Player.P2_START_XSPEED,
-        'y': Player.P2_START_YSPEED,
-    }
+    players[0].pos = pygame.math.Vector2(Player.P1_START_X, Player.P1_START_Y)
+    players[0].speed = pygame.math.Vector2(Player.P1_START_XSPEED, Player.P1_START_YSPEED)
+    players[1].pos = pygame.math.Vector2(Player.P2_START_X, Player.P2_START_Y)
+    players[1].speed = pygame.math.Vector2(Player.P2_START_XSPEED, Player.P2_START_YSPEED)
     state = STATE_PLAYERING
 
 while True:
@@ -270,22 +258,10 @@ while True:
             Bullet.DAMAGE = bulletdmg / 255
             gravitywell_mass = pow(1.1, gwmass)
             gravitywell_radiation_1km = gwrad
-            players[0 if playerNumber == 1 else 1].pos = {
-                'x': p1startx,
-                'y': p1starty,
-            }
-            players[0 if playerNumber == 1 else 1].speed = {
-                'x': p1startxspeed / 100,
-                'y': p1startyspeed / 100,
-            }
-            players[1 if playerNumber == 1 else 0].pos = {
-                'x': p2startx,
-                'y': p2starty,
-            }
-            players[1 if playerNumber == 1 else 0].speed = {
-                'x': p2startxspeed / 100,
-                'y': p2startyspeed / 100,
-            }
+            players[0 if playerNumber == 1 else 1].pos = pygame.math.Vector2(p1startx, p1starty)
+            players[0 if playerNumber == 1 else 1].speed = pygame.math.Vector2(p1startxspeed / 100, p1startyspeed / 100)
+            players[1 if playerNumber == 1 else 0].pos = pygame.math.Vector2(p2startx, p2starty)
+            players[1 if playerNumber == 1 else 0].speed = pygame.math.Vector2(p2startxspeed / 100, p2startyspeed / 100)
             state = STATE_PLAYERING
             statusmessage = ''
 
@@ -302,14 +278,8 @@ while True:
                         print('Info: packet loss. Received seqno', seqno, ' whereas the last seqno for this player was', players[1].seqno)
                     players[1].seqno = seqno
                     players[1].angle = angle * 1.5
-                    players[1].pos = {
-                        'x': x,
-                        'y': y,
-                    }
-                    players[1].speed = {
-                        'x': xspeed / 100,
-                        'y': yspeed / 100,
-                    }
+                    players[1].pos = pygame.math.Vector2(x, y)
+                    players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
                     players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
                     players[1].health = health / 255
             elif msg[0] == 1:
@@ -337,7 +307,7 @@ while True:
             player.draw(screen)
 
             w, h = player.rect.width, player.rect.height
-            x, y = player.pos['x'] + (w / 2), player.pos['y'] + (h / 2)
+            x, y = player.pos.x + (w / 2), player.pos.y + (h / 2)
             idis = h * Player.INDICATORDISTANCE
 
             # Draw battery level indicators
@@ -345,29 +315,29 @@ while True:
             poweryellow = (255, 200, 0)
             indicatorcolor = poweryellow if player.batterylevel > Player.THRUST / Player.THRUST_PER_kJ else (255, 0, 0)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos['y'] + h + idis + 1), roundi((w * 2 + 2)), roundi(h * Player.INDICATORHEIGHT + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y + h + idis + 1), roundi((w * 2 + 2)), roundi(h * Player.INDICATORHEIGHT + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos['y'] + h + idis + 2), roundi((w * 2 + 0)), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0)), roundi(h * Player.INDICATORHEIGHT + 0)))
             # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos['y'] + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * Player.INDICATORHEIGHT + 0)))
 
             # Draw health indicators
             healthgreen = (10, 230, 10)
             indicatorcolor = healthgreen if player.health > Bullet.DAMAGE else (255, 100, 0)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos['y'] - idis - 2), roundi((w * 2 + 2)),                 roundi(h * Player.INDICATORHEIGHT + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y - idis - 2), roundi((w * 2 + 2)),                 roundi(h * Player.INDICATORHEIGHT + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos['y'] - idis - 1), roundi((w * 2 + 0)),                 roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0)),                 roundi(h * Player.INDICATORHEIGHT + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos['y'] - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
 
         if not SINGLEPLAYER:
             msg = b'\x00' + struct.pack(mplib.updatestruct,
                 players[0].seqno,
-                roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos['x']))),
-                roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos['y']))),
-                roundi(min(1000, max(-1000, players[0].speed['x'] * 100))),
-                roundi(min(1000, max(-1000, players[0].speed['y'] * 100))),
+                roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos.x))),
+                roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos.y))),
+                roundi(min(1000, max(-1000, players[0].speed.x * 100))),
+                roundi(min(1000, max(-1000, players[0].speed.y * 100))),
                 roundi(players[0].angle / 1.5),
                 roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
                 roundi(players[0].health * 255),
