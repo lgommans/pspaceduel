@@ -7,6 +7,31 @@ from luclib import *
 
 class Bullet:
     DAMAGE = 0.1
+    MASS = 0.5
+
+    def __init__(self, playerobj):
+        x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
+        y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
+        self.pos = pygame.math.Vector2(x, y)
+        self.speed = pygame.math.Vector2(x, y)
+        self.belongsTo = playerobj.n
+
+    def advance(self, towards_pos, towards_mass):
+        # Returns whether it collided with something
+
+        for i in range(GRAVITATIONSTEPS):
+            accelx, accely, separation = gravity(self.pos, towards_pos, Bullet.MASS, towards_mass)
+            self.speed.x -= accelx
+            self.speed.y -= accely
+            self.pos.x += self.speed.x / GRAVITATIONSTEPS
+            self.pos.y += self.speed.y / GRAVITATIONSTEPS
+
+            if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
+                return True
+
+            # TODO player collision detection
+
+        return False
 
 
 class Player:
@@ -59,25 +84,20 @@ class Player:
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
         for i in range(GRAVITATIONSTEPS):
-            separation_x = self.pos.x - towards_pos[0]
-            separation_y = self.pos.y - towards_pos[1]
-            separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-            grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
-            dir_x = separation_x / separation
-            dir_y = separation_y / separation
-            self.speed.x -= grav_accel / Player.MASS * dir_x
-            self.speed.y -= grav_accel / Player.MASS * dir_y
+            accelx, accely, separation = gravity(self.pos, towards_pos, Player.MASS, towards_mass)
+            self.speed.x -= accelx
+            self.speed.y -= accely
             self.pos.x += self.speed.x / GRAVITATIONSTEPS
             self.pos.y += self.speed.y / GRAVITATIONSTEPS
 
-            if playerNumber == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
-                playerDied(self.n)
+            if players[0].n == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
+                playerDied(other=False)
                 return
 
-            if checkPlayerDistance(self.rect.width):
+            if distance(players[0], players[1]) < self.rect.width:  # TODO better collision detection
                 # If you run into each other, you both die. Should have run, you fools
-                playerDied(playerNumber)
-                playerDied(2 if playerNumber == 1 else 1)
+                playerDied(other=False)
+                playerDied(other=True)
 
         self.rect.left = roundi(self.pos.x)
         self.rect.top = roundi(self.pos.y)
@@ -86,26 +106,36 @@ class Player:
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
 
 
-def checkPlayerDistance(minSeparation):
+def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
+    separation_x = obj1pos.x - obj2pos.x
+    separation_y = obj1pos.y - obj2pos.y
+    separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
+    grav_accel = obj1mass * obj2mass / (separation * separation) * FTGC
+    dir_x = separation_x / separation
+    dir_y = separation_y / separation
+    return grav_accel / obj1mass * dir_x, grav_accel / obj1mass * dir_y, separation
+
+
+def distance(obj1, obj2):
     sep_x = players[0].pos.x - players[1].pos.x
     sep_y = players[0].pos.y - players[1].pos.y
-    return ((sep_x * sep_x) + (sep_y * sep_y)) < minSeparation
+    return ((sep_x * sep_x) + (sep_y * sep_y))
 
 
-def playerDied(numberdied):
+def playerDied(other=False):
+    # other: did the other player die or did we die?
     global statusmessage, state
 
-    if state == STATE_DEAD:
+    if state == STATE_DEAD:  # if someone already died and we get another death event...
         statusmessage = 'Tied'
     else:
         state = STATE_DEAD
-        if playerNumber == numberdied:
+        if other:
+            statusmessage = 'You won'
+        else:
             statusmessage = 'You died'
             if not SINGLEPLAYER:
                 sock.sendto(b'\x01', SERVER)
-                pass
-        else:
-            statusmessage = 'You won'
 
 
 def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
@@ -137,7 +167,7 @@ FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
 SERVER = ('127.0.0.1', 9473)
-SINGLEPLAYER = True
+SINGLEPLAYER = False
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
@@ -171,19 +201,16 @@ gravitywell_mass = 1e15
 gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
 gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
-gravitywell_center = (SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
+gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_radiation_1km = 10  # How many kW the spacecraft practically get at 1 km (pixel) distance (considering solar panel size and effiency)
 
 fpslimiter = pygame.time.Clock()
 
 screen = pygame.display.set_mode(SCREENSIZE)
 
-playerNumber = None  # 1 or 2, chosen by server
-
 players[0].seqno += 1
 
 if SINGLEPLAYER:
-    playerNumber = 1
     players[0].pos = pygame.math.Vector2(Player.P1_START_X, Player.P1_START_Y)
     players[0].speed = pygame.math.Vector2(Player.P1_START_XSPEED, Player.P1_START_YSPEED)
     players[1].pos = pygame.math.Vector2(Player.P2_START_X, Player.P2_START_Y)
@@ -210,7 +237,6 @@ while True:
         elif state == STATE_TOKENSENT:
             if msg == mplib.urplayerone:
                 statusmessage = 'Server connection established. Waiting for another player to join this server...'
-                playerNumber = 1
                 players[0].n = 1
                 players[1].n = 2
             elif msg == mplib.playerfound:
@@ -236,7 +262,6 @@ while True:
                 sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
             elif msg == mplib.urplayertwo:
                 statusmessage = 'Server found a match! Waiting for the other player to send game data...'
-                playerNumber = 2
                 players[0].n = 2
                 players[1].n = 1
                 state = STATE_MATCHED
@@ -258,10 +283,10 @@ while True:
             Bullet.DAMAGE = bulletdmg / 255
             gravitywell_mass = pow(1.1, gwmass)
             gravitywell_radiation_1km = gwrad
-            players[0 if playerNumber == 1 else 1].pos = pygame.math.Vector2(p1startx, p1starty)
-            players[0 if playerNumber == 1 else 1].speed = pygame.math.Vector2(p1startxspeed / 100, p1startyspeed / 100)
-            players[1 if playerNumber == 1 else 0].pos = pygame.math.Vector2(p2startx, p2starty)
-            players[1 if playerNumber == 1 else 0].speed = pygame.math.Vector2(p2startxspeed / 100, p2startyspeed / 100)
+            players[players[0].n - 1].pos = pygame.math.Vector2(p1startx, p1starty)
+            players[players[0].n - 1].speed = pygame.math.Vector2(p1startxspeed / 100, p1startyspeed / 100)
+            players[players[1].n - 1].pos = pygame.math.Vector2(p2startx, p2starty)
+            players[players[1].n - 1].speed = pygame.math.Vector2(p2startxspeed / 100, p2startyspeed / 100)
             state = STATE_PLAYERING
             statusmessage = ''
 
@@ -283,7 +308,7 @@ while True:
                     players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
                     players[1].health = health / 255
             elif msg[0] == 1:
-                playerDied(1 if playerNumber == 2 else 2)
+                playerDied(other=True)
 
 
     for event in pygame.event.get():
