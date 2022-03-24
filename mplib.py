@@ -35,7 +35,8 @@ configstruct = '>BhhhhhhhhHHHHBB'
 - short player xspeed in hundredths
 - short player yspeed in hundredths
 - ubyte player angle/1.5
-- ubyte player battery level as a percentage 0 through 255
+- ubyte player battery level where 255 is max capacity
+- ubyte player health times 255
 '''
-updatestruct = '>IhhhhBB'
+updatestruct = '>IhhhhBBB'
 

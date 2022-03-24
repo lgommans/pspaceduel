@@ -16,17 +16,17 @@ class Player:
     ROTATIONAL_SPEED = 4
     MASS = 100  # kg
     P1_START_X = 300
-    P1_START_Y = 400
-    P1_START_XSPEED = 2
-    P1_START_YSPEED = -2
+    P1_START_Y = 300
+    P1_START_XSPEED = 1
+    P1_START_YSPEED = -1
     P2_START_X = 900
-    P2_START_Y = 800
-    P2_START_XSPEED = -2
-    P2_START_YSPEED = 2
+    P2_START_Y = 700
+    P2_START_XSPEED = -1
+    P2_START_YSPEED = 1
     BATTERY_CAPACITY = 100  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
-    THRUST = 750  # Newtons
-    THRUST_PER_kJ = 1500  # newtons you get out of each kJ
+    THRUST = 600  # Newtons
+    THRUST_PER_kJ = 1200  # newtons you get out of each kJ
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -44,8 +44,8 @@ class Player:
 
     def thrust(self):
         if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
-            self.speed['x'] += lengthdir_x(Player.THRUST * frametime / Player.MASS, self.angle)
-            self.speed['y'] += lengthdir_y(Player.THRUST * frametime / Player.MASS, self.angle)
+            self.speed['x'] += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
+            self.speed['y'] += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
             self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
@@ -59,10 +59,10 @@ class Player:
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
         for i in range(GRAVITATIONSTEPS):
-            separation_x = self.rect.x - towards_pos[0]
-            separation_y = self.rect.y - towards_pos[1]
+            separation_x = self.pos['x'] - towards_pos[0]
+            separation_y = self.pos['y'] - towards_pos[1]
             separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-            grav_accel = Player.MASS * towards_mass / (separation * separation) * (frametime * GRAVITYCONSTANT / GRAVITATIONSTEPS)
+            grav_accel = Player.MASS * towards_mass / (separation * separation) * FTGC
             dir_x = separation_x / separation
             dir_y = separation_y / separation
             self.speed['x'] -= grav_accel / Player.MASS * dir_x
@@ -134,8 +134,9 @@ GRAVITYCONSTANT = 6.6742e-11
 GRAVITATIONSTEPS = 10
 SCREENSIZE = (1440, 900)
 FPS = 60
-frametime = 1 / FPS
-SERVER = ('lucgommans.nl', 9473)
+FRAMETIME = 1 / FPS
+FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
+SERVER = ('127.0.0.1', 9473)
 SINGLEPLAYER = False
 
 STATE_HELLOSENT = 1
@@ -166,7 +167,7 @@ players = [
 ]
 
 gravitywell = pygame.image.load(f'res/sun.png')
-gravitywell_mass = 5e15
+gravitywell_mass = 1e15
 gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
 gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
@@ -178,6 +179,8 @@ fpslimiter = pygame.time.Clock()
 screen = pygame.display.set_mode(SCREENSIZE)
 
 playerNumber = None  # 1 or 2, chosen by server
+
+players[0].seqno += 1
 
 if SINGLEPLAYER:
     playerNumber = 1
@@ -291,22 +294,24 @@ while True:
                 print('other player quit for reason:', msg)
                 statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
             elif msg[0] == 0:
-                seqno, x, y, xspeed, yspeed, angle, batlvl = struct.unpack(mplib.updatestruct, msg[1 : ])
+                seqno, x, y, xspeed, yspeed, angle, batlvl, health = struct.unpack(mplib.updatestruct, msg[1 : ])
                 if seqno <= players[1].seqno:
-                    print('ERRRRRR Received seqno', seqno, ' last seqno for this player was', players[1].seqno)
+                    print('Ignored seqno', seqno, ' because the last seqno for this player was', players[1].seqno)
                 else:
-                    print('Received seqno', seqno, ' last seqno for this player was', players[1].seqno)
-                players[1].seqno = seqno
-                players[1].angle = angle * 1.5
-                players[1].pos = {
-                    'x': x,
-                    'y': y,
-                }
-                players[1].speed = {
-                    'x': xspeed / 100,
-                    'y': yspeed / 100,
-                }
-                players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
+                    if seqno - 1 != players[1].seqno:
+                        print('Info: packet loss. Received seqno', seqno, ' whereas the last seqno for this player was', players[1].seqno)
+                    players[1].seqno = seqno
+                    players[1].angle = angle * 1.5
+                    players[1].pos = {
+                        'x': x,
+                        'y': y,
+                    }
+                    players[1].speed = {
+                        'x': xspeed / 100,
+                        'y': yspeed / 100,
+                    }
+                    players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
+                    players[1].health = health / 255
             elif msg[0] == 1:
                 playerDied(1 if playerNumber == 2 else 2)
 
@@ -328,8 +333,7 @@ while True:
             players[0].thrust()
 
         for player in players:
-            if player.n == playerNumber:
-                player.update(gravitywell_center, gravitywell_mass)
+            player.update(gravitywell_center, gravitywell_mass)
             player.draw(screen)
 
             w, h = player.rect.width, player.rect.height
@@ -366,6 +370,7 @@ while True:
                 roundi(min(1000, max(-1000, players[0].speed['y'] * 100))),
                 roundi(players[0].angle / 1.5),
                 roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
+                roundi(players[0].health * 255),
             )
             players[0].seqno += 1
             threading.Thread(target=sendto, args=(sock, msg, SERVER)).start()
@@ -376,10 +381,9 @@ while True:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
         surface = font_statusMsg.render(msgpart, True, (0, 30, 174))
         screen.blit(surface, (10, 50))
-    surface = font_statusMsg.render('playerNumber=' + str(playerNumber) + '  state=' + str(state), True, (0, 30, 174))
-    screen.blit(surface, (0, 0))
 
     pygame.display.flip()
-    tmpframetime = fpslimiter.tick(FPS)
-    print('frametime', tmpframetime)
+    frametime = fpslimiter.tick(FPS)
+    if frametime * 0.9 > FRAMETIME * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
+        print('frametime was', frametime)
 
