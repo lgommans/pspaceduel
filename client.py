@@ -373,6 +373,7 @@ while True:
                 roundi(players[0].health * 255),
             )
             players[0].seqno += 1
+            # TODO instead of creating a new thread every time, put the msg in some variable and unblock/notify the thread to send it
             threading.Thread(target=sendto, args=(sock, msg, SERVER)).start()
 
     screen.blit(gravitywell, gravitywellrect)
