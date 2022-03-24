@@ -8,28 +8,30 @@ from luclib import *
 class Bullet:
     DAMAGE = 0.1
     MASS = 0.5
+    SPEED = 4
 
     def __init__(self, playerobj):
         x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
-        self.speed = pygame.math.Vector2(x, y)
+        self.speed = pygame.math.Vector2(playerobj.speed)
+        self.speed.x += lengthdir_x(Bullet.SPEED, playerobj.angle)
+        self.speed.y += lengthdir_y(Bullet.SPEED, playerobj.angle)
         self.belongsTo = playerobj.n
 
-    def advance(self, towards_pos, towards_mass):
+    def advance(self):
         # Returns whether it collided with something
 
-        for i in range(GRAVITATIONSTEPS):
-            accelx, accely, separation = gravity(self.pos, towards_pos, Bullet.MASS, towards_mass)
-            self.speed.x -= accelx
-            self.speed.y -= accely
-            self.pos.x += self.speed.x / GRAVITATIONSTEPS
-            self.pos.y += self.speed.y / GRAVITATIONSTEPS
+        accelx, accely, separation = gravity(self.pos, gravitywell_center, Bullet.MASS, gravitywell_mass, FRAMETIME * 2)
+        self.speed.x -= accelx
+        self.speed.y -= accely
+        self.pos.x += self.speed.x
+        self.pos.y += self.speed.y
 
-            if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
-                return True
+        if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
+            return True
 
-            # TODO player collision detection
+        # TODO player collision detection
 
         return False
 
@@ -52,6 +54,7 @@ class Player:
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
     THRUST = 600  # Newtons
     THRUST_PER_kJ = 1200  # newtons you get out of each kJ
+    RELOADTIME = 0.8
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -66,6 +69,7 @@ class Player:
         self.pos = None  # initialized when round starts
         self.speed = None
         self.batterylevel = Player.BATTERY_CAPACITY
+        self.reloadstate = 0
 
     def thrust(self):
         if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
@@ -80,11 +84,11 @@ class Player:
         self.angle += direction * Player.ROTATIONAL_SPEED
         self.angle %= 360
 
-    def update(self, towards_pos, towards_mass):
+    def update(self):
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
         for i in range(GRAVITATIONSTEPS):
-            accelx, accely, separation = gravity(self.pos, towards_pos, Player.MASS, towards_mass)
+            accelx, accely, separation = gravity(self.pos, gravitywell_center, Player.MASS, gravitywell_mass, FRAMETIME / GRAVITATIONSTEPS)
             self.speed.x -= accelx
             self.speed.y -= accely
             self.pos.x += self.speed.x / GRAVITATIONSTEPS
@@ -106,11 +110,11 @@ class Player:
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
 
 
-def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
+def gravity(obj1pos, obj2pos, obj1mass, obj2mass, timestep):
     separation_x = obj1pos.x - obj2pos.x
     separation_y = obj1pos.y - obj2pos.y
     separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-    grav_accel = obj1mass * obj2mass / (separation * separation) * FTGC
+    grav_accel = obj1mass * obj2mass / (separation * separation) * (timestep * GRAVITYCONSTANT)
     dir_x = separation_x / separation
     dir_y = separation_y / separation
     return grav_accel / obj1mass * dir_x, grav_accel / obj1mass * dir_y, separation
@@ -165,9 +169,10 @@ GRAVITATIONSTEPS = 10
 SCREENSIZE = (1440, 900)
 FPS = 60
 FRAMETIME = 1 / FPS
-FTGC = FRAMETIME * GRAVITYCONSTANT / GRAVITATIONSTEPS
+FTGC = FRAMETIME * GRAVITYCONSTANT
+PREDICTIONDISTANCE = FPS * 2
 SERVER = ('127.0.0.1', 9473)
-SINGLEPLAYER = False
+SINGLEPLAYER = True
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
@@ -328,7 +333,7 @@ while True:
             players[0].thrust()
 
         for player in players:
-            player.update(gravitywell_center, gravitywell_mass)
+            player.update()
             player.draw(screen)
 
             w, h = player.rect.width, player.rect.height
@@ -355,6 +360,14 @@ while True:
             pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0)),                 roundi(h * Player.INDICATORHEIGHT + 0)))
             # health level (drawn over the black area)
             pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
+
+        b = Bullet(players[0])
+        for i in range(PREDICTIONDISTANCE):
+            oldpos = pygame.math.Vector2(b.pos)
+            died = b.advance()
+            if died:
+                break
+            pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
 
         if not SINGLEPLAYER:
             msg = b'\x00' + struct.pack(mplib.updatestruct,
