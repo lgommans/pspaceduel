@@ -139,6 +139,8 @@ class Player:
 
         if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
+            # TODO this seems buggy... rework this. Probably send a packet saying that you detected a collision between y'all
+            gamescore = 0.5
             playerDied(other=False)
             playerDied(other=True)
 
@@ -167,13 +169,13 @@ def playerDied(other=False):
     global statusmessage, state
 
     if state == STATE_DEAD:  # if someone already died and we get another death event...
-        statusmessage = 'Tied'
+        statusmessage = 'You tied: 0.5 points for you! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
     else:
         state = STATE_DEAD
         if other:
-            statusmessage = 'You won'
+            statusmessage = 'You won: 1 point for you! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
         else:
-            statusmessage = 'You died'
+            statusmessage = 'You died: no extra points for you. Your score: ' + str(score) + '. Press Enter to restart.'
             if not SINGLEPLAYER:
                 sock.sendto(b'\x01', SERVER)
 
@@ -211,24 +213,24 @@ PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 secon
 SERVER = ('127.0.0.1', 9473)
 SINGLEPLAYER = False
 
+STATE_INITIAL   = 0
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
 STATE_MATCHED   = 3
 STATE_PLAYERING = 4
 STATE_DEAD      = 5
 
+score = 0
+gamescore = 0
+
 if not SINGLEPLAYER:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setblocking(0)
-    sock.sendto(mplib.clienthello, SERVER)
-    mptoken = None
-    state = STATE_HELLOSENT
-    statusmessage = 'Waiting for server initial response...'
+    state = STATE_INITIAL
 else:
+    state = STATE_PLAYERING
     statusmessage = ''
 
 # don't just pygame.init() because it will hang and not quit when you do pygame.quit();sys.exit();. Stackoverflow suggests in 2013 this was a Wheezy bug, but it works on a
-# newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is literally 20 times faster (0.02 instead of 0.4 s) anyway!
+# newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is also literally 20 times faster (0.02 instead of 0.4 s)!
 pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
@@ -253,19 +255,22 @@ fpslimiter = pygame.time.Clock()
 
 screen = pygame.display.set_mode(SCREENSIZE)
 
-pingSentAt = None
-nextPingAt = random.randint(FPS * 3, FPS * 4)  # seqno
-players[0].seqno += 1
-
 if SINGLEPLAYER:
     players[0].pos = pygame.math.Vector2(Player.P1_START_X, Player.P1_START_Y)
     players[0].speed = pygame.math.Vector2(Player.P1_START_XSPEED, Player.P1_START_YSPEED)
     players[1].pos = pygame.math.Vector2(Player.P2_START_X, Player.P2_START_Y)
     players[1].speed = pygame.math.Vector2(Player.P2_START_XSPEED, Player.P2_START_YSPEED)
-    state = STATE_PLAYERING
 
 while True:
     if not SINGLEPLAYER:
+        if state == STATE_INITIAL:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setblocking(0)
+            sock.sendto(mplib.clienthello, SERVER)
+            mptoken = None
+            state = STATE_HELLOSENT
+            statusmessage = 'Waiting for server initial response...'
+
         for _ in range(15):  # process up to N packets per frame (send rate is 1.x per frame)
             try:
                 msg, addr = sock.recvfrom(mplib.maximumsize)
@@ -274,13 +279,25 @@ while True:
             if msg == b'':
                 break  # no multiplayer updates
             elif state == STATE_HELLOSENT:
-                if msg[0 : len(mplib.serverhello)] == mplib.serverhello:
+                if msg[0 : len(mplib.serverhello)] != mplib.serverhello:
+                    statusmessage = 'Server protocol error, please restart the game.'
+                else:
                     mptoken = msg[len(mplib.serverhello) : ]
                     sock.sendto(mptoken, SERVER)
                     state = STATE_TOKENSENT
                     statusmessage = 'Completing server handshake...'
-                else:
-                    statusmessage = 'Server protocol error, please restart the game.'
+
+                    bullets = pygame.sprite.Group()
+                    remotebullets = []
+                    players = [
+                        Player(1),
+                        Player(2),
+                    ]
+
+                    pingSentAt = None
+                    nextPingAt = random.randint(FPS * 3, FPS * 4)  # seqno
+                    players[0].seqno += 1
+
 
             elif state == STATE_TOKENSENT:
                 if msg == mplib.urplayerone:
@@ -365,6 +382,7 @@ while True:
                             msg = msg[mplib.bulletstructlen : ]
 
                 elif msg[0] == 1:
+                    gamescore = 1
                     playerDied(other=True)
 
                 elif msg[0] == 2:
@@ -483,6 +501,10 @@ while True:
                 threading.Thread(target=sendto, args=(sock, b'\x02', SERVER)).start()
                 pingSentAt = time.time()  # keep in mind sendto() takes a few ms. Should we subtract the sendto time? It's part of the ping kinda no? Or is the packet already considered on its way at the start? Does it depend on the system? Imo the best is to include it in the latency
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
+    elif state == STATE_DEAD:
+        if keystates[pygame.K_RETURN]:
+            score += gamescore
+            state = STATE_INITIAL
 
     screen.blit(gravitywell, gravitywellrect)
 
