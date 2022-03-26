@@ -5,13 +5,17 @@ import pygame
 import mplib
 from luclib import *
 
-class Bullet:
+class Bullet(pygame.sprite.Sprite):
     DAMAGE = 0.1
     MASS = 0.5
     SPEED = 4
     SIZE = 2
+    MAX_OUT_OF_SCREEN = 1  # times the screen width/height
+    COLOR = (240, 120, 0)
 
-    def __init__(self, playerobj):
+    def __init__(self, playerobj, virtual=False):
+        pygame.sprite.Sprite.__init__(self)
+
         x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
@@ -19,6 +23,12 @@ class Bullet:
         self.speed.x += lengthdir_x(Bullet.SPEED, playerobj.angle)
         self.speed.y += lengthdir_y(Bullet.SPEED, playerobj.angle)
         self.belongsTo = playerobj.n
+        self.radius = Bullet.SIZE
+        self.image = pygame.surface.Surface((Bullet.SIZE * 2, Bullet.SIZE * 2), pygame.SRCALPHA)
+        self.rect = self.image.get_rect(center=self.pos)
+        self.virtual = virtual
+        if not virtual:
+            pygame.draw.circle(self.image, Bullet.COLOR, (Bullet.SIZE, Bullet.SIZE), Bullet.SIZE)
 
     def advance(self):
         # Returns whether it collided with something
@@ -28,11 +38,14 @@ class Bullet:
         self.speed.y -= accely
         self.pos.x += self.speed.x
         self.pos.y += self.speed.y
+        self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
         if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
             return True
 
-        # TODO player collision detection
+        if self.pos.x < -SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN or self.pos.x > SCREENSIZE[0] + (SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN) \
+        or self.pos.y < -SCREENSIZE[1] * Bullet.MAX_OUT_OF_SCREEN or self.pos.y > SCREENSIZE[1] + (SCREENSIZE[1] * Bullet.MAX_OUT_OF_SCREEN):
+            return True
 
         return False
 
@@ -42,6 +55,7 @@ class Player:
     INDICATORHEIGHT = 0.18  # as a fraction of the player height after scaling
     INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
     ROTATIONAL_SPEED = 4
+    ROTATIONAL_SPEED_FINE = 0.8
     MASS = 100  # kg
     P1_START_X = 300
     P1_START_Y = 300
@@ -55,7 +69,8 @@ class Player:
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
     THRUST = 600  # Newtons
     THRUST_PER_kJ = 1200  # newtons you get out of each kJ
-    RELOADTIME = 0.75
+    RELOADTIME = 0.75  # seconds
+    MINRELOADSTATE = -0.75  # times the reloadtime
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -65,6 +80,11 @@ class Player:
         self.seqno = 0
         self.img = pygame.transform.scale(img, (roundi(rect.width * Player.SCALE[0]), roundi(rect.height * Player.SCALE[1])))
         self.rect = self.img.get_rect()
+        self.spr = pygame.sprite.Sprite()
+        self.spr.image = self.img
+        self.spr.rect = self.rect
+        self.spr.mask = pygame.mask.from_surface(self.img)
+
         self.angle = 0  # 0-360
         self.health = 1  # 0-1
         self.pos = None  # initialized when round starts
@@ -79,16 +99,18 @@ class Player:
             self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
-        blitRotateCenter(screen, self.img, (self.rect.left, self.rect.top), self.angle)
+        blitRotateCenter(screen, self.img, (roundi(self.spr.rect.left), roundi(self.spr.rect.top)), self.angle)
 
-    def rotate(self, direction):  # direction is 1 or -1
-        self.angle += direction * Player.ROTATIONAL_SPEED
+    def rotate(self, direction, fine=False):  # direction is 1 or -1
+        self.angle += direction * (Player.ROTATIONAL_SPEED if not fine else Player.ROTATIONAL_SPEED_FINE)
         self.angle %= 360
+        rotated_image = pygame.transform.rotate(self.img, self.angle)
+        self.spr.mask = pygame.mask.from_surface(rotated_image)
 
     def update(self):
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
 
-        if self.reloadstate > 0:
+        if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
             self.reloadstate -= 1
 
         accelx, accely, separation = gravity(self.pos, gravitywell_center, Player.MASS, gravitywell_mass)
@@ -97,17 +119,17 @@ class Player:
         self.pos.x += self.speed.x / GRAVITATIONSTEPS
         self.pos.y += self.speed.y / GRAVITATIONSTEPS
 
+        self.spr.rect.left = roundi(self.pos.x)
+        self.spr.rect.top = roundi(self.pos.y)
+
         if players[0].n == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
             playerDied(other=False)
             return
 
-        if distance(players[0], players[1]) < self.rect.width:  # TODO better collision detection
+        if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
             playerDied(other=False)
             playerDied(other=True)
-
-        self.rect.left = roundi(self.pos.x)
-        self.rect.top = roundi(self.pos.y)
 
         radiative_power = gravitywell_radiation_1km / (separation * separation) * 1000
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
@@ -199,7 +221,7 @@ pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 
-bullets = []
+bullets = pygame.sprite.Group()
 players = [
     Player(1),
     Player(2),
@@ -331,24 +353,30 @@ while True:
     screen.fill((0, 0, 0))
 
     if state == STATE_PLAYERING:
-        players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT])
+        players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
 
         if keystates[pygame.K_SPACE]:
-            if players[0].reloadstate == 0:
-                bullets.append(Bullet(players[0]))
-                players[0].reloadstate = FPS * Player.RELOADTIME
+            if players[0].reloadstate <= 0:
+                players[0].reloadstate += FPS * Player.RELOADTIME
+                bull = Bullet(players[0])
+                bullets.add(bull)
 
         if keystates[pygame.K_UP]:
             players[0].thrust()
 
         removebullets = []
-        for i, bullet in enumerate(bullets):
+        for bullet in bullets:
             died = bullet.advance()
             if died:
-                removebullets.append(i)
-            pygame.draw.circle(screen, (240, 120, 0), (roundi(bullet.pos.x), roundi(bullet.pos.y)), Bullet.SIZE)
-        for num in removebullets:
-            del bullets[num]
+                removebullets.append(bullet)
+        for player in players:
+            removebullets += pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
+        for bullet in removebullets:
+            if bullet.belongsTo == players[0].n:
+                # TODO sync bullet stuff to multiplayer
+                bullets.remove(bullet)
+
+        bullets.draw(screen)
 
         for player in players:
             player.update()
@@ -379,7 +407,7 @@ while True:
             # health level (drawn over the black area)
             pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
 
-        b = Bullet(players[0])
+        b = Bullet(players[0], virtual=True)
         for i in range(PREDICTIONDISTANCE):
             oldpos = pygame.math.Vector2(b.pos)
             died = b.advance()
