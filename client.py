@@ -69,6 +69,7 @@ class Player:
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
     THRUST = 600  # Newtons
     THRUST_PER_kJ = 1200  # newtons you get out of each kJ
+    ROTATION_PER_kJ = 90
     RELOADTIME = 0.75  # seconds
     MINRELOADSTATE = -0.75  # times the reloadtime
 
@@ -99,16 +100,29 @@ class Player:
             self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
 
     def draw(self, screen):
+        self.spr.rect.left = roundi(self.pos.x)
+        self.spr.rect.top = roundi(self.pos.y)
+
         blitRotateCenter(screen, self.img, (roundi(self.spr.rect.left), roundi(self.spr.rect.top)), self.angle)
 
     def rotate(self, direction, fine=False):  # direction is 1 or -1
-        self.angle += direction * (Player.ROTATIONAL_SPEED if not fine else Player.ROTATIONAL_SPEED_FINE)
-        self.angle %= 360
-        rotated_image = pygame.transform.rotate(self.img, self.angle)
-        self.spr.mask = pygame.mask.from_surface(rotated_image)
+        if direction == 0:
+            return
+
+        rotationamount = direction * (Player.ROTATIONAL_SPEED if not fine else Player.ROTATIONAL_SPEED_FINE)
+        if self.batterylevel > abs(rotationamount) / Player.ROTATION_PER_kJ:
+            self.batterylevel -= abs(rotationamount) / Player.ROTATION_PER_kJ
+            self.angle += rotationamount
+            self.angle %= 360
+            rotated_image = pygame.transform.rotate(self.img, self.angle)
+            self.spr.mask = pygame.mask.from_surface(rotated_image)
 
     def update(self):
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
+
+        if self.health <= 0:
+            playerDied(other=False)
+            return
 
         if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
             self.reloadstate -= 1
@@ -118,9 +132,6 @@ class Player:
         self.speed.y -= accely
         self.pos.x += self.speed.x / GRAVITATIONSTEPS
         self.pos.y += self.speed.y / GRAVITATIONSTEPS
-
-        self.spr.rect.left = roundi(self.pos.x)
-        self.spr.rect.top = roundi(self.pos.y)
 
         if players[0].n == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
             playerDied(other=False)
@@ -197,7 +208,7 @@ FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
 SERVER = ('127.0.0.1', 9473)
-SINGLEPLAYER = True
+SINGLEPLAYER = False
 
 STATE_HELLOSENT = 1
 STATE_TOKENSENT = 2
@@ -318,6 +329,7 @@ while True:
             players[players[0].n - 1].speed = pygame.math.Vector2(p1startxspeed / 100, p1startyspeed / 100)
             players[players[1].n - 1].pos = pygame.math.Vector2(p2startx, p2starty)
             players[players[1].n - 1].speed = pygame.math.Vector2(p2startxspeed / 100, p2startyspeed / 100)
+            players[0].draw(screen)  # updates the sprite which also does collision detection
             state = STATE_PLAYERING
             statusmessage = ''
 
@@ -371,21 +383,22 @@ while True:
                 removebullets.append(bullet)
         for bullet in removebullets:
             if bullet.belongsTo == players[0].n:
-                # TODO sync bullet stuff to multiplayer
                 bullets.remove(bullet)
         for player in players:
             removebullets = pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
             for bullet in removebullets:
                 if bullet.belongsTo == players[0].n:
-                    # TODO sync bullet stuff to multiplayer
-                    player.health -= Bullet.DAMAGE
-                    # TODO playerDied(...)
+                    player.health = max(0, player.health - Bullet.DAMAGE)
+                    # TODO queue hit for sending with next update
                     bullets.remove(bullet)
 
         bullets.draw(screen)
 
+        players[0].update()
+        if SINGLEPLAYER:
+            players[1].update()
+
         for player in players:
-            player.update()
             player.draw(screen)
 
             w, h = player.rect.width, player.rect.height
