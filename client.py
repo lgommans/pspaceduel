@@ -169,13 +169,13 @@ def playerDied(other=False):
     global statusmessage, state
 
     if state == STATE_DEAD:  # if someone already died and we get another death event...
-        statusmessage = 'You tied: 0.5 points for you! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
+        statusmessage = 'You tied: 0.5 points! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
     else:
         state = STATE_DEAD
         if other:
-            statusmessage = 'You won: 1 point for you! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
+            statusmessage = 'You won: 1 point! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
         else:
-            statusmessage = 'You died: no extra points for you. Your score: ' + str(score) + '. Press Enter to restart.'
+            statusmessage = 'You died. Your score: ' + str(score) + '. Press Enter to restart.'
             if not SINGLEPLAYER:
                 sock.sendto(b'\x01', SERVER)
 
@@ -356,10 +356,14 @@ while True:
                 state = STATE_PLAYERING
                 statusmessage = ''
 
-            elif state == STATE_PLAYERING:
+            elif state == STATE_PLAYERING or state == STATE_DEAD:
                 if msg.startswith(mplib.playerquits):
-                    print('other player quit for reason:', msg)
-                    statusmessage = 'Received: ' + str(msg[len(mplib.playerquits) : ], 'ASCII')
+                    print('other player sent:', msg)
+                    reason = msg[len(mplib.playerquits) : ]
+                    if reason == mplib.restartpl0x:
+                        statusmessage += ' The other player restarted!'
+                    else:
+                        statusmessage = 'Received: ' + str(reason, 'ASCII')
                 elif msg[0] == 0:
                     seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = struct.unpack(mplib.updatestruct, msg[1 : 1 + mplib.updatestructlen])
                     if seqno <= players[1].seqno:
@@ -503,6 +507,7 @@ while True:
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
     elif state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
+            sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
             score += gamescore
             state = STATE_INITIAL
 

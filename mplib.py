@@ -9,6 +9,7 @@ urplayerone = b"1"
 urplayertwo = b"2"
 playerfound = b'Player 2 found!'
 playerquits = b'I take my leave since '
+restartpl0x = b'I would like to play another round on this server!'
 playerlimit = b'FULL'
 
 '''
