@@ -31,7 +31,7 @@ class Bullet(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, Bullet.COLOR, (Bullet.SIZE, Bullet.SIZE), Bullet.SIZE)
 
     def advance(self):
-        # Returns whether it collided with something
+        # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
 
         accelx, accely, separation = gravity(self.pos, gravitywell_center, Bullet.MASS, gravitywell_mass)
         self.speed.x -= accelx
@@ -369,12 +369,18 @@ while True:
             died = bullet.advance()
             if died:
                 removebullets.append(bullet)
-        for player in players:
-            removebullets += pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
         for bullet in removebullets:
             if bullet.belongsTo == players[0].n:
                 # TODO sync bullet stuff to multiplayer
                 bullets.remove(bullet)
+        for player in players:
+            removebullets = pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
+            for bullet in removebullets:
+                if bullet.belongsTo == players[0].n:
+                    # TODO sync bullet stuff to multiplayer
+                    player.health -= Bullet.DAMAGE
+                    # TODO playerDied(...)
+                    bullets.remove(bullet)
 
         bullets.draw(screen)
 
