@@ -60,12 +60,12 @@ class Player:
     MASS = 100  # kg
     P1_START_X = 300
     P1_START_Y = 300
-    P1_START_XSPEED = 1
-    P1_START_YSPEED = -1
+    P1_START_XSPEED = 0.5
+    P1_START_YSPEED = -0.5
     P2_START_X = 900
     P2_START_Y = 700
-    P2_START_XSPEED = -1
-    P2_START_YSPEED = 1
+    P2_START_XSPEED = -0.5
+    P2_START_YSPEED = 0.5
     BATTERY_CAPACITY = 100  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
     THRUST = 400  # Newtons
@@ -246,7 +246,7 @@ players = [
 hitsdealt = 0
 
 gravitywell = pygame.image.load(f'res/sun.png')
-gravitywell_mass = 1e15
+gravitywell_mass = 3e14
 gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
 gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
@@ -367,7 +367,7 @@ while True:
                     if reason == mplib.restartpl0x:
                         statusmessage += ' The other player restarted!'
                     else:
-                        statusmessage = 'Received: ' + str(reason, 'ASCII')
+                        statusmessage = 'You win! The other player ' + str(reason, 'ASCII')
                 elif msg[0] == 0:
                     seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = struct.unpack(mplib.updatestruct, msg[1 : 1 + mplib.updatestructlen])
                     if seqno <= players[1].seqno:
@@ -405,11 +405,11 @@ while True:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            stopgame(reason='player closed the game window') 
+            stopgame(reason='fled the arena')
     keystates = pygame.key.get_pressed()
 
     if keystates[pygame.K_ESCAPE]:
-        stopgame(reason='player pressed escape key and successfully fled the arena')
+        stopgame(reason='fled the arena')
 
     screen.fill((0, 0, 0))
 
