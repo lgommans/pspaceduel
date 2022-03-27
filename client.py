@@ -8,7 +8,7 @@ from luclib import *
 class Bullet(pygame.sprite.Sprite):
     DAMAGE = 0.1
     MASS = 0.5
-    SPEED = 4
+    SPEED = 5
     SIZE = 2
     MAX_OUT_OF_SCREEN = 1  # times the screen width/height
     COLOR = (240, 120, 0)
@@ -19,7 +19,8 @@ class Bullet(pygame.sprite.Sprite):
         x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
-        self.speed = pygame.math.Vector2(playerobj.speed)
+        self.speed = pygame.math.Vector2(0, 0)
+        #self.speed = pygame.math.Vector2(playerobj.speed)
         self.speed.x += lengthdir_x(Bullet.SPEED, playerobj.angle)
         self.speed.y += lengthdir_y(Bullet.SPEED, playerobj.angle)
         self.belongsTo = playerobj.n
@@ -67,8 +68,8 @@ class Player:
     P2_START_YSPEED = 1
     BATTERY_CAPACITY = 100  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
-    THRUST = 600  # Newtons
-    THRUST_PER_kJ = 1200  # newtons you get out of each kJ
+    THRUST = 400  # Newtons
+    THRUST_PER_kJ = 800  # newtons you get out of each kJ
     ROTATION_PER_kJ = 90
     RELOADTIME = 0.75  # seconds
     MINRELOADSTATE = -0.6  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
@@ -211,7 +212,7 @@ FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
 PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 seconds
-SERVER = ('127.0.0.1', 9473)
+SERVER = ('lucgommans.nl', 9473)
 SINGLEPLAYER = False
 
 STATE_INITIAL   = 0
