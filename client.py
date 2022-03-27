@@ -71,7 +71,8 @@ class Player:
     THRUST_PER_kJ = 1200  # newtons you get out of each kJ
     ROTATION_PER_kJ = 90
     RELOADTIME = 0.75  # seconds
-    MINRELOADSTATE = -0.75  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
+    MINRELOADSTATE = -0.6  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
+    SHOOT_kJ = 8
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -210,7 +211,7 @@ FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
 PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 seconds
-SERVER = ('lucgommans.nl', 9473)
+SERVER = ('127.0.0.1', 9473)
 SINGLEPLAYER = False
 
 STATE_INITIAL   = 0
@@ -322,6 +323,7 @@ while True:
                         roundi(math.log(gravitywell_mass, 1.1)),
                         roundi(gravitywell_radiation_1km),
                         roundi(Bullet.DAMAGE * 255),
+                        roundi(Player.SHOOT_kJ),
                     )
                     sock.sendto(reply, SERVER)
                     sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
@@ -335,7 +337,7 @@ while True:
                     print('Got from server:', msg)
 
             elif state == STATE_MATCHED:
-                gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, thrustperkj, gwmass, gwrad, bulletdmg \
+                gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, thrustperkj, gwmass, gwrad, bulletdmg, shootkj \
                     = struct.unpack(mplib.configstruct, msg)
 
                 if GAMEVERSION != gameversion:
@@ -345,6 +347,7 @@ while True:
                 Player.BATTERY_CAPACITY = batcap
                 Player.THRUST = enginethrust
                 Player.THRUST_PER_kJ = thrustperkj
+                Player.SHOOT_kJ = shootkj
                 Bullet.DAMAGE = bulletdmg / 255
                 gravitywell_mass = pow(1.1, gwmass)
                 gravitywell_radiation_1km = gwrad
@@ -413,8 +416,9 @@ while True:
         players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
 
         if keystates[pygame.K_SPACE]:
-            if players[0].reloadstate <= 0:
+            if players[0].reloadstate <= 0 and players[0].batterylevel > Player.SHOOT_kJ:
                 players[0].reloadstate += FPS * Player.RELOADTIME
+                players[0].batterylevel -= Player.SHOOT_kJ
                 bull = Bullet(players[0])
                 bullets.add(bull)
 
@@ -455,7 +459,12 @@ while True:
             # Draw battery level indicators
             bl = player.batterylevel / Player.BATTERY_CAPACITY
             poweryellow = (255, 200, 0)
-            indicatorcolor = poweryellow if player.batterylevel > Player.THRUST / Player.THRUST_PER_kJ else (255, 0, 0)
+            if player.batterylevel < Player.THRUST / Player.THRUST_PER_kJ:
+                indicatorcolor = (255, 0, 0)
+            elif player.batterylevel < Player.SHOOT_kJ:
+                indicatorcolor = (255, 128, 0)
+            else:
+                indicatorcolor = poweryellow
             # outer rectangle
             pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y + h + idis + 1), roundi((w * 2 + 2)), roundi(h * Player.INDICATORHEIGHT + 2)))
             # inner black area (same area as above but -1px on each side)

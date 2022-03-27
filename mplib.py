@@ -28,8 +28,9 @@ playerlimit = b'FULL'
 - ushort gravity well mass as a power to 1.1
 - ubyte  gravity well radiation energy
 - ubyte  bullet damage
+- ubyte  shoot kJ
 '''
-configstruct = '>BhhhhhhhhHHHHBB'
+configstruct = '>BhhhhhhhhHHHHBBB'
 
 '''
 - uint   sequence number
