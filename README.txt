@@ -32,7 +32,8 @@ There are also regressions:
  - Hot seat multiplayer (players sharing a keyboard) is not supported
  - Powerups are not featured in this version
  - Mines are not featured in this version
- - The code is a mess. I wanted to get it playable and a lot of technical debt was incurred along the way
+ - The code is a mess. I wanted to get it playable and a lot of
+   technical debt was incurred along the way
  
 [1] https://apps.kde.org/kspaceduel/
 
@@ -45,7 +46,8 @@ There are also regressions:
 
 Install python3 and pygame for your platform.
 
-You can run a dummy singleplayer game (you can control only one craft) by setting SINGLEPLAYER = True
+You can run a dummy singleplayer game (you can control only one craft)
+by setting SINGLEPLAYER = True
 
 For multiplayer:
 
@@ -53,6 +55,12 @@ For multiplayer:
  - Else you can start a server using:  python3 server.py
 
 Run the client:  python3 client.py
+
+Controls:
+
+  Arrow keys
+  Shift + arrow keys to rotate slower (more accuracy)
+  Space to shoot
 
 
 +-=-=-=-=-=-=-=-=-=-+
