@@ -120,7 +120,7 @@ class Player:
             self.spr.mask = pygame.mask.from_surface(rotated_image)
 
     def update(self):
-        # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
+        global gamescore
 
         if self.health <= 0:
             playerDied(other=False)
@@ -129,6 +129,7 @@ class Player:
         if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
             self.reloadstate -= 1
 
+        # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
         accelx, accely, separation = gravity(self.pos, gravitywell_center, Player.MASS, gravitywell_mass)
         self.speed.x -= accelx
         self.speed.y -= accely
@@ -141,10 +142,8 @@ class Player:
 
         if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
-            # TODO this seems buggy... rework this. Probably send a packet saying that you detected a collision between y'all
-            gamescore = 0.5
-            playerDied(other=False)
-            playerDied(other=True)
+            gamescore = 1
+            playerDied(both=True)
 
         radiative_power = gravitywell_radiation_1km / (separation * separation) * 1000
         self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
@@ -166,19 +165,22 @@ def distance(obj1, obj2):
     return ((sep_x * sep_x) + (sep_y * sep_y))
 
 
-def playerDied(other=False):
+def playerDied(other=False, both=False, sendpacket=True):
     # other: did the other player die or did we die?
     global statusmessage, state
 
-    if state == STATE_DEAD:  # if someone already died and we get another death event...
-        statusmessage = 'You tied: 0.5 points! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
+    state = STATE_DEAD
+
+    if both:
+        statusmessage = 'You tied: 1 point! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
+        if not SINGLEPLAYER and sendpacket:
+            sock.sendto(b'\x01\x01', SERVER)
     else:
-        state = STATE_DEAD
         if other:
-            statusmessage = 'You won: 1 point! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
+            statusmessage = 'You won: 5 points! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
         else:
             statusmessage = 'You died. Your score: ' + str(score) + '. Press Enter to restart.'
-            if not SINGLEPLAYER:
+            if not SINGLEPLAYER and sendpacket:
                 sock.sendto(b'\x01', SERVER)
 
 
@@ -367,7 +369,10 @@ while True:
                     if reason == mplib.restartpl0x:
                         statusmessage += ' The other player restarted!'
                     else:
-                        statusmessage = 'You win! The other player ' + str(reason, 'ASCII')
+                        if state == STATE_PLAYERING:
+                            statusmessage = 'You win! The other player ' + str(reason, 'ASCII')
+                        else:
+                            statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(score)
                 elif msg[0] == 0:
                     seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = struct.unpack(mplib.updatestruct, msg[1 : 1 + mplib.updatestructlen])
                     if seqno <= players[1].seqno:
@@ -390,8 +395,12 @@ while True:
                             msg = msg[mplib.bulletstructlen : ]
 
                 elif msg[0] == 1:
-                    gamescore = 1
-                    playerDied(other=True)
+                    if len(msg) > 1 and msg[1] == 1:
+                        gamescore = 1
+                        playerDied(both=True, sendpacket=False)
+                    else:
+                        gamescore = 5
+                        playerDied(other=True)
 
                 elif msg[0] == 2:
                     threading.Thread(target=sendto, args=(sock, b'\x03', SERVER)).start()
