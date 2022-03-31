@@ -9,13 +9,15 @@ def genToken():
 
 TIMEOUT = 600
 MAXPLAYERS = 100
+PORT = 9473
+
 STATE_POLITELY_GREETED = 1
 STATE_SHOWN_WORTHINESS = 2
 STATE_MATCHED_TOGETHER = 3
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', 9473))
+sock.bind(('0.0.0.0', PORT))
 
 clients = {}
 
