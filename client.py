@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import sys, math, socket, time, struct, threading, random
+import sys, math, socket, time, threading, random
+from inspect import currentframe  # temporarily for timeme()
 import pygame
 import mplib
 from luclib import *
@@ -12,6 +13,7 @@ class Bullet(pygame.sprite.Sprite):
     SIZE = 2
     MAX_OUT_OF_SCREEN = 1  # times the screen width/height
     COLOR = (240, 120, 0)
+    USEPLAYERVECTOR = False  # TODO synchronise
 
     def __init__(self, playerobj, virtual=False):
         pygame.sprite.Sprite.__init__(self)
@@ -19,16 +21,18 @@ class Bullet(pygame.sprite.Sprite):
         x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
-        self.speed = pygame.math.Vector2(0, 0)
-        #self.speed = pygame.math.Vector2(playerobj.speed)
+        if Bullet.USEPLAYERVECTOR:
+            self.speed = pygame.math.Vector2(playerobj.speed)
+        else:
+            self.speed = pygame.math.Vector2(0, 0)
         self.speed.x += lengthdir_x(Bullet.SPEED, playerobj.angle)
         self.speed.y += lengthdir_y(Bullet.SPEED, playerobj.angle)
         self.belongsTo = playerobj.n
         self.radius = Bullet.SIZE
-        self.image = pygame.surface.Surface((Bullet.SIZE * 2, Bullet.SIZE * 2), pygame.SRCALPHA)
-        self.rect = self.image.get_rect(center=self.pos)
         self.virtual = virtual
         if not virtual:
+            self.image = pygame.surface.Surface((Bullet.SIZE * 2, Bullet.SIZE * 2), pygame.SRCALPHA)
+            self.rect = self.image.get_rect(center=self.pos)
             pygame.draw.circle(self.image, Bullet.COLOR, (Bullet.SIZE, Bullet.SIZE), Bullet.SIZE)
 
     def advance(self):
@@ -39,7 +43,8 @@ class Bullet(pygame.sprite.Sprite):
         self.speed.y -= accely
         self.pos.x += self.speed.x
         self.pos.y += self.speed.y
-        self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
+        if not self.virtual:
+            self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
         if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
             return True
@@ -174,14 +179,14 @@ def playerDied(other=False, both=False, sendpacket=True):
     if both:
         statusmessage = 'You tied: 1 point! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
         if not SINGLEPLAYER and sendpacket:
-            sock.sendto(b'\x01\x01', SERVER)
+            sendtoQueued(b'\x01\x01')
     else:
         if other:
             statusmessage = 'You won: 5 points! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
         else:
             statusmessage = 'You died. Your score: ' + str(score) + '. Press Enter to restart.'
             if not SINGLEPLAYER and sendpacket:
-                sock.sendto(b'\x01', SERVER)
+                sendtoQueued(b'\x01')
 
 
 def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
@@ -196,13 +201,49 @@ def blitRotateCenter(surf, image, pos, angle):
 
 
 def stopgame(reason, exitstatus=0):
+    global stopSendtoThread
+
+    stopSendtoThread = True
+    msgQueueEvent.set()
     if not SINGLEPLAYER:
         sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
     sys.exit(exitstatus)
 
 
-def sendto(sock, msg, server):
-    sock.sendto(msg, server)
+def sendto():
+    while True:
+        if len(msgQueue) == 0:
+            # Doing this thread blocking/unblocking is ~13× faster than starting a new thread for every packet
+            msgQueueEvent.clear()
+            msgQueueEvent.wait()
+
+        if stopSendtoThread:
+            break
+
+        try:
+            msg = msgQueue.pop(0)
+            sock.sendto(msg, SERVER)
+        except IndexError:
+            # We somehow managed to try and pop an empty list
+            print('moin? We were asked to send something but there is nothing in the queue? Going back to sleep...')
+
+
+def sendtoQueued(msg):
+    msgQueue.append(msg)
+    msgQueueEvent.set()
+
+
+starttime = time.time()
+def timeme(out=True, th=0):
+    global starttime
+    now = time.time()
+    cf = currentframe()
+    ln = cf.f_back.f_lineno  # line number of the parent stack frame
+    if out:
+        td = (now - starttime) * 1000000
+        if th < td:
+            print(ln, td, 'µs')
+    starttime = now
 
 
 GAMEVERSION = 1
@@ -214,6 +255,7 @@ FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
 PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 seconds
+SIMPLEGRAPHICS = True
 SERVER = ('lucgommans.nl', 9473)
 SINGLEPLAYER = False
 
@@ -239,6 +281,12 @@ pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 
+sock = None
+stopSendtoThread = False
+msgQueue = []  # apparently a regular list is thread-safe in python in 2022
+msgQueueEvent = threading.Event()
+threading.Thread(target=sendto).start()
+
 bullets = pygame.sprite.Group()
 remotebullets = []
 players = [
@@ -253,6 +301,7 @@ gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
 gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
 gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
+gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 gravitywell_radiation_1km = 10  # How many kW the spacecraft practically get at 1 km (pixel) distance (considering solar panel size and effiency)
 
 fpslimiter = pygame.time.Clock()
@@ -270,7 +319,7 @@ while True:
         if state == STATE_INITIAL:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setblocking(0)
-            sock.sendto(mplib.clienthello, SERVER)
+            sendtoQueued(mplib.clienthello)
             mptoken = None
             state = STATE_HELLOSENT
             statusmessage = 'Waiting for server initial response...'
@@ -287,7 +336,7 @@ while True:
                     statusmessage = 'Server protocol error, please restart the game.'
                 else:
                     mptoken = msg[len(mplib.serverhello) : ]
-                    sock.sendto(mptoken, SERVER)
+                    sendtoQueued(mptoken)
                     state = STATE_TOKENSENT
                     statusmessage = 'Completing server handshake...'
 
@@ -310,7 +359,7 @@ while True:
                     players[1].n = 2
                 elif msg == mplib.playerfound:
                     state = STATE_MATCHED
-                    reply = struct.pack(mplib.configstruct,
+                    reply = mplib.configstruct.pack(
                         GAMEVERSION,
                         Player.P1_START_X,
                         Player.P1_START_Y,
@@ -341,7 +390,7 @@ while True:
 
             elif state == STATE_MATCHED:
                 gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, thrustperkj, gwmass, gwrad, bulletdmg, shootkj \
-                    = struct.unpack(mplib.configstruct, msg)
+                    = mplib.configstruct.unpack(msg)
 
                 if GAMEVERSION != gameversion:
                     print('Incompatible game version', gameversion)
@@ -374,12 +423,12 @@ while True:
                         else:
                             statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(score)
                 elif msg[0] == 0:
-                    seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = struct.unpack(mplib.updatestruct, msg[1 : 1 + mplib.updatestructlen])
+                    seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = mplib.updatestruct.unpack(msg[1 : 1 + mplib.updatestruct.size])
                     if seqno <= players[1].seqno:
                         print('Ignored seqno', seqno, ' because the last seqno for this player was', players[1].seqno)
                     else:
                         if seqno - 1 != players[1].seqno:
-                            print('Info: packet loss. Received seqno', seqno, ' whereas the last seqno for this player was', players[1].seqno)
+                            print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', players[1].seqno)
                         players[1].seqno = seqno
                         players[1].angle = angle * 1.5
                         players[1].pos = pygame.math.Vector2(x, y)
@@ -387,12 +436,12 @@ while True:
                         players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
                         players[1].health = health / 255
                         players[0].health = max(0, players[0].health - (Bullet.DAMAGE * hitsfromtheirbullets))
-                        msg = msg[1 + mplib.updatestructlen : ]
+                        msg = msg[1 + mplib.updatestruct.size : ]
                         remotebullets = []
                         while len(msg) > 0:
-                            x, y = struct.unpack(mplib.bulletstruct, msg[ : mplib.bulletstructlen])
+                            x, y = mplib.bulletstruct.unpack(msg[ : mplib.bulletstruct.size])
                             remotebullets.append((x, y))
-                            msg = msg[mplib.bulletstructlen : ]
+                            msg = msg[mplib.bulletstruct.size : ]
 
                 elif msg[0] == 1:
                     if len(msg) > 1 and msg[1] == 1:
@@ -403,7 +452,7 @@ while True:
                         playerDied(other=True)
 
                 elif msg[0] == 2:
-                    threading.Thread(target=sendto, args=(sock, b'\x03', SERVER)).start()
+                    sendtoQueued(b'\x03')
 
                 elif msg[0] == 3:
                     if pingSentAt is not None:
@@ -500,8 +549,9 @@ while True:
                 break
             pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
 
+
         if not SINGLEPLAYER:
-            msg = b'\x00' + struct.pack(mplib.updatestruct,
+            msg = b'\x00' + mplib.updatestruct.pack(
                 players[0].seqno,
                 roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos.x))),
                 roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos.y))),
@@ -513,16 +563,15 @@ while True:
                 hitsdealt,
             )
             for bullet in bullets:
-                msg += struct.pack(mplib.bulletstruct, roundi(bullet.pos.x), roundi(bullet.pos.y))
+                msg += mplib.bulletstruct.pack(roundi(bullet.pos.x), roundi(bullet.pos.y))
             players[0].seqno += 1
             hitsdealt = 0
-            # TODO instead of creating a new thread every time, put the msg in some variable and unblock/notify the thread to send it
-            threading.Thread(target=sendto, args=(sock, msg, SERVER)).start()
+            sendtoQueued(msg)
 
             nextPingAt -= 1
             if nextPingAt <= 0:
-                threading.Thread(target=sendto, args=(sock, b'\x02', SERVER)).start()
-                pingSentAt = time.time()  # keep in mind sendto() takes a few ms. Should we subtract the sendto time? It's part of the ping kinda no? Or is the packet already considered on its way at the start? Does it depend on the system? Imo the best is to include it in the latency
+                sendtoQueued(b'\x02')
+                pingSentAt = time.time()  # keep in mind sock.sendto() takes a few ms on some platforms. Is the packet already considered on its way at the start? Does it depend on the system? No idea...
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
     elif state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
@@ -530,7 +579,10 @@ while True:
             score += gamescore
             state = STATE_INITIAL
 
-    screen.blit(gravitywell, gravitywellrect)
+    if SIMPLEGRAPHICS:  # draw circle: 31µs; blit: 288-600µs
+        pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
+    else:
+        screen.blit(gravitywell, gravitywellrect)
 
     if len(statusmessage) > 0:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]

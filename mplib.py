@@ -30,7 +30,7 @@ playerlimit = b'FULL'
 - ubyte  bullet damage
 - ubyte  shoot kJ
 '''
-configstruct = '>BhhhhhhhhHHHHBBB'
+configstruct = struct.Struct('>BhhhhhhhhHHHHBBB')
 
 '''
 - uint   sequence number
@@ -44,10 +44,8 @@ configstruct = '>BhhhhhhhhHHHHBBB'
 - ubyte hits taken from the remote player's bullets
 optionally followed by one or more bulletstructs
 '''
-updatestruct = '>IhhhhBBBB'
-updatestructlen = struct.calcsize(updatestruct)
+updatestruct = struct.Struct('>IhhhhBBBB')
 
 ''' x, y '''
-bulletstruct = '>hh'
-bulletstructlen = struct.calcsize(bulletstruct)
+bulletstruct = struct.Struct('>hh')
 
