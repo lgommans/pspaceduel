@@ -11,7 +11,7 @@ class Bullet(pygame.sprite.Sprite):
     MASS = 0.5
     SPEED = 5
     SIZE = 2
-    MAX_OUT_OF_SCREEN = 1  # times the screen width/height
+    MAX_OUT_OF_SCREEN = 0.25  # times the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere
     COLOR = (240, 120, 0)
     USEPLAYERVECTOR = False  # TODO synchronise
 
@@ -58,6 +58,7 @@ class Bullet(pygame.sprite.Sprite):
 
 class Player:
     SCALE = (0.25, 0.25)
+    OUT_OF_SCREEN = 1  # number of pixels of the player sprite that should still be visible before it wraps
     INDICATORHEIGHT = 0.18  # as a fraction of the player height after scaling
     INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
     ROTATIONAL_SPEED = 4
@@ -124,7 +125,7 @@ class Player:
             rotated_image = pygame.transform.rotate(self.img, self.angle)
             self.spr.mask = pygame.mask.from_surface(rotated_image)
 
-    def update(self):
+    def update(self):  # this function should only be run on the local player, since it calls playerDied which triggers network events
         global gamescore
 
         if self.health <= 0:
@@ -141,9 +142,18 @@ class Player:
         self.pos.x += self.speed.x / GRAVITATIONSTEPS
         self.pos.y += self.speed.y / GRAVITATIONSTEPS
 
-        if players[0].n == self.n and separation < gravitywellrect.width / 2:  # assumed to be spherical
+        if separation < gravitywellrect.width / 2:  # assumed to be spherical
             playerDied(other=False)
             return
+
+        if self.pos.x < Player.OUT_OF_SCREEN - self.rect.width:
+            self.pos.x = SCREENSIZE[0] - Player.OUT_OF_SCREEN
+        elif self.pos.x > SCREENSIZE[0] - Player.OUT_OF_SCREEN:
+            self.pos.x = Player.OUT_OF_SCREEN - self.rect.width
+        if self.pos.y < Player.OUT_OF_SCREEN - self.rect.height:
+            self.pos.y = SCREENSIZE[1] - Player.OUT_OF_SCREEN
+        elif self.pos.y > SCREENSIZE[1] - Player.OUT_OF_SCREEN:
+            self.pos.y = Player.OUT_OF_SCREEN - self.rect.height
 
         if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
@@ -283,7 +293,7 @@ font_statusMsg = pygame.font.SysFont(None, 48)
 
 # if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
 # else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
-SERVER[0] = socket.gethostbyname(SERVER[0])
+SERVER = (socket.gethostbyname(SERVER[0]), SERVER[1])
 
 sock = None
 stopSendtoThread = False

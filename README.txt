@@ -34,6 +34,12 @@ There are also regressions:
  - Mines are not featured in this version
  - The code is a mess. I wanted to get it playable and a lot of
    technical debt was incurred along the way
+
+And general changes:
+
+- Bullets do not wrap like players.
+  I'd like the players to also not wrap for realism, but it increases the difficulty of
+  continuing the game significantly (after all, the solar panels barely work out there).
  
 [1] https://apps.kde.org/kspaceduel/
 
