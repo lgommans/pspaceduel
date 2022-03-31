@@ -48,6 +48,7 @@ class Bullet(pygame.sprite.Sprite):
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
         if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # GW assumed to be spherical
+            # TODO effects
             return True
 
         if self.pos.x < -SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN or self.pos.x > SCREENSIZE[0] + (SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN) \
@@ -73,14 +74,14 @@ class Player:
     P2_START_Y = 700
     P2_START_XSPEED = -0.5
     P2_START_YSPEED = 0.5
-    BATTERY_CAPACITY = 100  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
+    BATTERY_CAPACITY = 110  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
-    THRUST = 400  # Newtons
+    THRUST = 300  # Newtons
     THRUST_PER_kJ = 800  # newtons you get out of each kJ
-    ROTATION_PER_kJ = 90
-    RELOADTIME = 0.75  # seconds
-    MINRELOADSTATE = -0.6  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
-    SHOOT_kJ = 8
+    ROTATION_PER_kJ = 80
+    RELOADTIME = 0.3  # seconds
+    MINRELOADSTATE = 0  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
+    SHOOT_kJ = 12
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
