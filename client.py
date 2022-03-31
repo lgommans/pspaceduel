@@ -511,7 +511,6 @@ while True:
                 died = bullet.advance()
                 if died:
                     removebullets.append(bullet)
-                    # TODO take self damage and if single player apply health to other player also
         for bullet in removebullets:
             if bullet.belongsTo == players[0].n:
                 bullets.remove(bullet)
@@ -519,8 +518,11 @@ while True:
             removebullets = pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
             for bullet in removebullets:
                 if bullet.belongsTo == players[0].n:
-                    hitsdealt += 1
                     bullets.remove(bullet)
+                    if player == players[1]:  # but did we hit the other player or ourselves?
+                        hitsdealt += 1
+                    else:
+                        players[0].health = max(0, players[0].health - Bullet.DAMAGE)
 
         bullets.draw(screen)
         for bulletpos in remotebullets:
