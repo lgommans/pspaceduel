@@ -18,8 +18,8 @@ class Bullet(pygame.sprite.Sprite):
     def __init__(self, playerobj, virtual=False):
         pygame.sprite.Sprite.__init__(self)
 
-        x = playerobj.pos.x + lengthdir_x(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
-        y = playerobj.pos.y + lengthdir_y(playerobj.rect.width + playerobj.rect.height, playerobj.angle)
+        x = playerobj.pos.x + lengthdir_x(playerobj.spr.rect.width + playerobj.spr.rect.height, playerobj.angle)
+        y = playerobj.pos.y + lengthdir_y(playerobj.spr.rect.width + playerobj.spr.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
         if Bullet.USEPLAYERVECTOR:
             self.speed = pygame.math.Vector2(playerobj.speed)
@@ -34,6 +34,7 @@ class Bullet(pygame.sprite.Sprite):
             self.image = pygame.surface.Surface((Bullet.SIZE * 2, Bullet.SIZE * 2), pygame.SRCALPHA)
             self.rect = self.image.get_rect(center=self.pos)
             pygame.draw.circle(self.image, Bullet.COLOR, (Bullet.SIZE, Bullet.SIZE), Bullet.SIZE)
+            self.image = self.image.convert()
 
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
@@ -88,10 +89,10 @@ class Player:
         self.n = n
         self.seqno = 0
         self.img = pygame.transform.scale(img, (roundi(rect.width * Player.SCALE[0]), roundi(rect.height * Player.SCALE[1])))
-        self.rect = self.img.get_rect()
+        self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
         self.spr.image = self.img
-        self.spr.rect = self.rect
+        self.spr.rect = self.img.get_rect()
         self.spr.mask = pygame.mask.from_surface(self.img)
 
         self.angle = 0  # 0-360
@@ -135,6 +136,7 @@ class Player:
         if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
             self.reloadstate -= 1
 
+        # TODO self.pos is top-left, maybe use self.spr.rect.center?
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
         accelx, accely, separation = gravity(self.pos, gravitywell_center, Player.MASS, gravitywell_mass)
         self.speed.x -= accelx
@@ -146,14 +148,14 @@ class Player:
             playerDied(other=False)
             return
 
-        if self.pos.x < Player.OUT_OF_SCREEN - self.rect.width:
+        if self.pos.x < Player.OUT_OF_SCREEN - self.spr.rect.width:
             self.pos.x = SCREENSIZE[0] - Player.OUT_OF_SCREEN
         elif self.pos.x > SCREENSIZE[0] - Player.OUT_OF_SCREEN:
-            self.pos.x = Player.OUT_OF_SCREEN - self.rect.width
-        if self.pos.y < Player.OUT_OF_SCREEN - self.rect.height:
+            self.pos.x = Player.OUT_OF_SCREEN - self.spr.rect.width
+        if self.pos.y < Player.OUT_OF_SCREEN - self.spr.rect.height:
             self.pos.y = SCREENSIZE[1] - Player.OUT_OF_SCREEN
         elif self.pos.y > SCREENSIZE[1] - Player.OUT_OF_SCREEN:
-            self.pos.y = Player.OUT_OF_SCREEN - self.rect.height
+            self.pos.y = Player.OUT_OF_SCREEN - self.spr.rect.height
 
         if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
@@ -213,11 +215,20 @@ def blitRotateCenter(surf, image, pos, angle):
 def stopgame(reason, exitstatus=0):
     global stopSendtoThread
 
-    stopSendtoThread = True
-    msgQueueEvent.set()
     if not SINGLEPLAYER:
+        stopSendtoThread = True
+        msgQueueEvent.set()
         sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
+
     sys.exit(exitstatus)
+
+
+def initSinglePlayer():
+    players[0].pos = pygame.math.Vector2(Player.P1_START_X, Player.P1_START_Y)
+    players[0].speed = pygame.math.Vector2(Player.P1_START_XSPEED, Player.P1_START_YSPEED)
+    players[0].draw(screen)  # updates the sprite position to avoid a collision
+    players[1].pos = pygame.math.Vector2(Player.P2_START_X, Player.P2_START_Y)
+    players[1].speed = pygame.math.Vector2(Player.P2_START_XSPEED, Player.P2_START_YSPEED)
 
 
 def sendto():
@@ -290,16 +301,12 @@ else:
 pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
+fpslimiter = pygame.time.Clock()
+screen = pygame.display.set_mode(SCREENSIZE)
 
 # if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
 # else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
 SERVER = (socket.gethostbyname(SERVER[0]), SERVER[1])
-
-sock = None
-stopSendtoThread = False
-msgQueue = []  # apparently a regular list is thread-safe in python in 2022
-msgQueueEvent = threading.Event()
-threading.Thread(target=sendto).start()
 
 bullets = pygame.sprite.Group()
 remotebullets = []
@@ -310,6 +317,7 @@ players = [
 hitsdealt = 0
 
 gravitywell = pygame.image.load(f'res/sun.png')
+gravitywell = gravitywell.convert_alpha()
 gravitywell_mass = 3e14
 gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
@@ -318,15 +326,14 @@ gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 gravitywell_radiation_1km = 10  # How many kW the spacecraft practically get at 1 km (pixel) distance (considering solar panel size and effiency)
 
-fpslimiter = pygame.time.Clock()
-
-screen = pygame.display.set_mode(SCREENSIZE)
-
 if SINGLEPLAYER:
-    players[0].pos = pygame.math.Vector2(Player.P1_START_X, Player.P1_START_Y)
-    players[0].speed = pygame.math.Vector2(Player.P1_START_XSPEED, Player.P1_START_YSPEED)
-    players[1].pos = pygame.math.Vector2(Player.P2_START_X, Player.P2_START_Y)
-    players[1].speed = pygame.math.Vector2(Player.P2_START_XSPEED, Player.P2_START_YSPEED)
+    initSinglePlayer()
+else:
+    sock = None
+    stopSendtoThread = False
+    msgQueue = []  # apparently a regular list is thread-safe in python in 2022
+    msgQueueEvent = threading.Event()
+    threading.Thread(target=sendto).start()
 
 while True:
     if not SINGLEPLAYER:
@@ -504,6 +511,7 @@ while True:
                 died = bullet.advance()
                 if died:
                     removebullets.append(bullet)
+                    # TODO take self damage and if single player apply health to other player also
         for bullet in removebullets:
             if bullet.belongsTo == players[0].n:
                 bullets.remove(bullet)
@@ -525,8 +533,8 @@ while True:
         for player in players:
             player.draw(screen)
 
-            w, h = player.rect.width, player.rect.height
-            x, y = player.pos.x + (w / 2), player.pos.y + (h / 2)
+            w, h = player.spr.rect.width, player.spr.rect.height
+            x, y = player.spr.rect.center
             idis = h * Player.INDICATORDISTANCE
 
             # Draw battery level indicators
@@ -589,9 +597,14 @@ while True:
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
     elif state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
-            sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
             score += gamescore
-            state = STATE_INITIAL
+            if not SINGLEPLAYER:
+                sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
+                state = STATE_INITIAL
+            else:
+                state = STATE_PLAYERING
+                initSinglePlayer()
+                statusmessage = ''
 
     if SIMPLEGRAPHICS:  # draw circle: 31µs; blit: 288-600µs
         pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
