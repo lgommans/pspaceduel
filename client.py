@@ -18,8 +18,8 @@ class Bullet(pygame.sprite.Sprite):
     def __init__(self, playerobj, virtual=False):
         pygame.sprite.Sprite.__init__(self)
 
-        x = playerobj.pos.x + lengthdir_x(playerobj.spr.rect.width + playerobj.spr.rect.height, playerobj.angle)
-        y = playerobj.pos.y + lengthdir_y(playerobj.spr.rect.width + playerobj.spr.rect.height, playerobj.angle)
+        x = playerobj.spr.rect.center[0] + lengthdir_x(playerobj.spr.rect.height, playerobj.angle)
+        y = playerobj.spr.rect.center[1] + lengthdir_y(playerobj.spr.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
         if Bullet.USEPLAYERVECTOR:
             self.speed = pygame.math.Vector2(playerobj.speed)
@@ -47,7 +47,7 @@ class Bullet(pygame.sprite.Sprite):
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # assumed to be spherical
+        if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # GW assumed to be spherical
             return True
 
         if self.pos.x < -SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN or self.pos.x > SCREENSIZE[0] + (SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN) \
@@ -136,15 +136,14 @@ class Player:
         if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
             self.reloadstate -= 1
 
-        # TODO self.pos is top-left, maybe use self.spr.rect.center?
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        accelx, accely, separation = gravity(self.pos, gravitywell_center, Player.MASS, gravitywell_mass)
+        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), gravitywell_center, Player.MASS, gravitywell_mass)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x / GRAVITATIONSTEPS
         self.pos.y += self.speed.y / GRAVITATIONSTEPS
 
-        if separation < gravitywellrect.width / 2:  # assumed to be spherical
+        if separation < (gravitywellrect.width / 2) + (self.spr.rect.width / 2):  # GW assumed to be spherical
             playerDied(other=False)
             return
 
