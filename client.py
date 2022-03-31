@@ -201,17 +201,40 @@ def blitRotateCenter(surf, image, pos, angle):
 
 
 def stopgame(reason, exitstatus=0):
+    global stopSendtoThread
+
+    stopSendtoThread = True
+    msgQueueEvent.set()
     if not SINGLEPLAYER:
         sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
     sys.exit(exitstatus)
 
 
+def sendto():
+    while True:
+        if len(msgQueue) == 0:
+            # Doing this thread blocking/unblocking is ~13× faster than starting a new thread for every packet
+            msgQueueEvent.clear()
+            msgQueueEvent.wait()
+
+        if stopSendtoThread:
+            break
+
+        try:
+            msg = msgQueue.pop(0)
+            sock.sendto(msg, SERVER)
+        except IndexError:
+            # We somehow managed to try and pop an empty list
+            print('moin? We were asked to send something but there is nothing in the queue? Going back to sleep...')
+
+
 def sendtoQueued(msg):
-    threading.Thread(target=lambda: sock.sendto(msg, SERVER)).start()
+    msgQueue.append(msg)
+    msgQueueEvent.set()
 
 
 starttime = time.time()
-def timeme(out=True, th=0):  # params: show output; threshold above which it should be shown
+def timeme(out=True, th=0):
     global starttime
     now = time.time()
     cf = currentframe()
@@ -257,6 +280,12 @@ else:
 pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
+
+sock = None
+stopSendtoThread = False
+msgQueue = []  # apparently a regular list is thread-safe in python in 2022
+msgQueueEvent = threading.Event()
+threading.Thread(target=sendto).start()
 
 bullets = pygame.sprite.Group()
 remotebullets = []
