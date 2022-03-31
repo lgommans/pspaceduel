@@ -234,7 +234,7 @@ def sendtoQueued(msg):
 
 
 starttime = time.time()
-def timeme(out=True, th=0):
+def timeme(out=True, th=0):  # params: show output; threshold above which it should be shown
     global starttime
     now = time.time()
     cf = currentframe()
@@ -280,6 +280,10 @@ else:
 pygame.display.init()
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
+
+# if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
+# else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
+SERVER[0] = socket.gethostbyname(SERVER[0])
 
 sock = None
 stopSendtoThread = False
@@ -571,7 +575,7 @@ while True:
             nextPingAt -= 1
             if nextPingAt <= 0:
                 sendtoQueued(b'\x02')
-                pingSentAt = time.time()  # keep in mind sock.sendto() takes a few ms on some platforms. Is the packet already considered on its way at the start? Does it depend on the system? No idea...
+                pingSentAt = time.time()
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
     elif state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
