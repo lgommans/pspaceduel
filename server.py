@@ -31,9 +31,11 @@ while True:
 
         if addr not in clients:
             if msg != mplib.clienthello:
+                print('Received garbage from', addr)
                 continue  # we are not home
 
             if len(clients) >= MAXPLAYERS:
+                print('Returning "server full" to', addr)
                 sock.sendto(mplib.playerlimit, addr)
                 continue
 
@@ -44,7 +46,7 @@ while True:
             }
             sock.sendto(mplib.serverhello + clients[addr]['token'], addr)
 
-            print('Number of players currently:', len(clients))
+            print('New client from', addr, 'joined. Number of players, including them:', len(clients))
 
         else:
             # sender is known client
@@ -53,12 +55,12 @@ while True:
                 if addr in clients:
                     if 'partner' in clients[addr]:
                         sock.sendto(msg, clients[addr]['partner'])
+                        print(addr, 'quit. We also terminated their partner at', clients[addr]['partner'], '  Current player count:', len(clients))
                         del clients[clients[addr]['partner']]
                         del clients[addr]
-                        print('a client quit. We also killed their partner. Current player count:', len(clients))
                     else:
                         del clients[addr]
-                        print('a client quit. Current player count:', len(clients))
+                        print(addr, 'quit. Current player count:', len(clients))
                 continue
 
             clients[addr]['lastseen'] = time.time()
