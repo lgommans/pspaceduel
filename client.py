@@ -4,16 +4,13 @@ import sys, math, socket, time, threading, random
 from inspect import currentframe  # temporarily for timeme()
 import pygame
 import mplib
+from settings import Setting, settings
 from luclib import *
 
 class Bullet(pygame.sprite.Sprite):
-    DAMAGE = 0.1
-    MASS = 0.5
-    SPEED = 5
-    SIZE = 2
-    MAX_OUT_OF_SCREEN = 0.25  # times the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere
     COLOR = (240, 120, 0)
-    USEPLAYERVECTOR = False  # TODO synchronise
+    # multiplied with the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere when the shot was just below escape velocity
+    MAX_OUT_OF_SCREEN = 0.25
 
     def __init__(self, playerobj, virtual=False):
         pygame.sprite.Sprite.__init__(self)
@@ -21,25 +18,26 @@ class Bullet(pygame.sprite.Sprite):
         x = playerobj.spr.rect.center[0] + lengthdir_x(playerobj.spr.rect.height, playerobj.angle)
         y = playerobj.spr.rect.center[1] + lengthdir_y(playerobj.spr.rect.height, playerobj.angle)
         self.pos = pygame.math.Vector2(x, y)
-        if Bullet.USEPLAYERVECTOR:
+        if settings['Bullet.relspeed'].val:
             self.speed = pygame.math.Vector2(playerobj.speed)
         else:
             self.speed = pygame.math.Vector2(0, 0)
-        self.speed.x += lengthdir_x(Bullet.SPEED, playerobj.angle)
-        self.speed.y += lengthdir_y(Bullet.SPEED, playerobj.angle)
+        self.speed.x += lengthdir_x(settings['Bullet.speed'].val, playerobj.angle)
+        self.speed.y += lengthdir_y(settings['Bullet.speed'].val, playerobj.angle)
         self.belongsTo = playerobj.n
-        self.radius = Bullet.SIZE
+        self.radius = settings['Bullet.size'].val
         self.virtual = virtual
         if not virtual:
-            self.image = pygame.surface.Surface((Bullet.SIZE * 2, Bullet.SIZE * 2), pygame.SRCALPHA)
+            bulletsize = settings['Bullet.size'].val
+            self.image = pygame.surface.Surface((bulletsize * 2, bulletsize * 2), pygame.SRCALPHA)
             self.rect = self.image.get_rect(center=self.pos)
-            pygame.draw.circle(self.image, Bullet.COLOR, (Bullet.SIZE, Bullet.SIZE), Bullet.SIZE)
+            pygame.draw.circle(self.image, Bullet.COLOR, (bulletsize, bulletsize), bulletsize)
             self.image = self.image.convert()
 
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
 
-        accelx, accely, separation = gravity(self.pos, gravitywell_center, Bullet.MASS, gravitywell_mass)
+        accelx, accely, separation = gravity(self.pos, gravitywell_center, settings['Bullet.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x
@@ -65,23 +63,10 @@ class Player:
     INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
     ROTATIONAL_SPEED = 4
     ROTATIONAL_SPEED_FINE = 0.8
-    MASS = 100  # kg
-    P1_START_X = 300
-    P1_START_Y = 300
-    P1_START_XSPEED = 0.5
-    P1_START_YSPEED = -0.5
-    P2_START_X = 900
-    P2_START_Y = 700
-    P2_START_XSPEED = -0.5
-    P2_START_YSPEED = 0.5
     BATTERY_CAPACITY = 110  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
-    THRUST = 300  # Newtons
-    THRUST_PER_kJ = 800  # newtons you get out of each kJ
-    ROTATION_PER_kJ = 80
     RELOADTIME = 0.3  # seconds
     MINRELOADSTATE = 0  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
-    SHOOT_kJ = 12
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -100,14 +85,14 @@ class Player:
         self.health = 1  # 0-1
         self.pos = None  # initialized when round starts
         self.speed = None
-        self.batterylevel = Player.BATTERY_CAPACITY
+        self.batterylevel = settings['Player.battSize'].val
         self.reloadstate = 0
 
     def thrust(self):
-        if self.batterylevel > Player.THRUST / Player.THRUST_PER_kJ:
-            self.speed.x += lengthdir_x(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
-            self.speed.y += lengthdir_y(Player.THRUST * FRAMETIME / Player.MASS, self.angle)
-            self.batterylevel -= Player.THRUST / Player.THRUST_PER_kJ
+        if self.batterylevel > settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * FRAMETIME / settings['Player.mass'].val, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * FRAMETIME / settings['Player.mass'].val, self.angle)
+            self.batterylevel -= settings['Player.thrust'].val / settings['Player.thrust/kJ'].val
 
     def draw(self, screen):
         self.spr.rect.left = roundi(self.pos.x)
@@ -120,8 +105,8 @@ class Player:
             return
 
         rotationamount = direction * (Player.ROTATIONAL_SPEED if not fine else Player.ROTATIONAL_SPEED_FINE)
-        if self.batterylevel > abs(rotationamount) / Player.ROTATION_PER_kJ:
-            self.batterylevel -= abs(rotationamount) / Player.ROTATION_PER_kJ
+        if self.batterylevel > abs(rotationamount) / settings['Player.rot/kJ'].val:
+            self.batterylevel -= abs(rotationamount) / settings['Player.rot/kJ'].val
             self.angle += rotationamount
             self.angle %= 360
             rotated_image = pygame.transform.rotate(self.img, self.angle)
@@ -138,7 +123,7 @@ class Player:
             self.reloadstate -= 1
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), gravitywell_center, Player.MASS, gravitywell_mass)
+        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), gravitywell_center, settings['Player.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x / GRAVITATIONSTEPS
@@ -162,8 +147,8 @@ class Player:
             gamescore = 1
             playerDied(both=True)
 
-        radiative_power = gravitywell_radiation_1km / (separation * separation) * 1000
-        self.batterylevel = min(Player.BATTERY_CAPACITY, self.batterylevel + radiative_power)
+        radiative_power = settings['GW.radiation'].val / (separation * separation) * 1000
+        self.batterylevel = min(settings['Player.battSize'].val, self.batterylevel + radiative_power)
 
 
 def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
@@ -318,13 +303,11 @@ hitsdealt = 0
 
 gravitywell = pygame.image.load(f'res/sun.png')
 gravitywell = gravitywell.convert_alpha()
-gravitywell_mass = 3e14
 gravitywellrect = gravitywell.get_rect()
 gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
 gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
 gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
-gravitywell_radiation_1km = 10  # How many kW the spacecraft practically get at 1 km (pixel) distance (considering solar panel size and effiency)
 
 if SINGLEPLAYER:
     initSinglePlayer()
@@ -380,24 +363,7 @@ while True:
                     players[1].n = 2
                 elif msg == mplib.playerfound:
                     state = STATE_MATCHED
-                    reply = mplib.configstruct.pack(
-                        GAMEVERSION,
-                        Player.P1_START_X,
-                        Player.P1_START_Y,
-                        roundi(Player.P1_START_XSPEED * 100),
-                        roundi(Player.P1_START_YSPEED * 100),
-                        Player.P2_START_X,
-                        Player.P2_START_Y,
-                        roundi(Player.P2_START_XSPEED * 100),
-                        roundi(Player.P2_START_YSPEED * 100),
-                        Player.BATTERY_CAPACITY,
-                        Player.THRUST,
-                        Player.THRUST_PER_kJ,
-                        roundi(math.log(gravitywell_mass, 1.1)),
-                        roundi(gravitywell_radiation_1km),
-                        roundi(Bullet.DAMAGE * 255),
-                        roundi(Player.SHOOT_kJ),
-                    )
+                    reply = Setting.serializeSettings(settings)
                     sock.sendto(reply, SERVER)
                     sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
                 elif msg == mplib.urplayertwo:
@@ -410,25 +376,13 @@ while True:
                     print('Got from server:', msg)
 
             elif state == STATE_MATCHED:
-                gameversion, p1startx, p1starty, p1startxspeed, p1startyspeed, p2startx, p2starty, p2startxspeed, p2startyspeed, batcap, enginethrust, thrustperkj, gwmass, gwrad, bulletdmg, shootkj \
-                    = mplib.configstruct.unpack(msg)
+                Setting.updateSettings(settings, msg)
 
-                if GAMEVERSION != gameversion:
-                    print('Incompatible game version', gameversion)
-                    stopgame(reason='Incompatible version', exitstatus=2)
-
-                Player.BATTERY_CAPACITY = batcap
-                Player.THRUST = enginethrust
-                Player.THRUST_PER_kJ = thrustperkj
-                Player.SHOOT_kJ = shootkj
-                Bullet.DAMAGE = bulletdmg / 255
-                gravitywell_mass = pow(1.1, gwmass)
-                gravitywell_radiation_1km = gwrad
-                players[players[0].n - 1].pos = pygame.math.Vector2(p1startx, p1starty)
-                players[players[0].n - 1].speed = pygame.math.Vector2(p1startxspeed / 100, p1startyspeed / 100)
-                players[players[1].n - 1].pos = pygame.math.Vector2(p2startx, p2starty)
-                players[players[1].n - 1].speed = pygame.math.Vector2(p2startxspeed / 100, p2startyspeed / 100)
-                players[0].draw(screen)  # updates the sprite which also does collision detection
+                players[players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+                players[players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+                players[players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+                players[players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+                players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
                 state = STATE_PLAYERING
                 statusmessage = ''
 
@@ -454,9 +408,9 @@ while True:
                         players[1].angle = angle * 1.5
                         players[1].pos = pygame.math.Vector2(x, y)
                         players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
-                        players[1].batterylevel = batlvl / 255 * Player.BATTERY_CAPACITY
+                        players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
                         players[1].health = health / 255
-                        players[0].health = max(0, players[0].health - (Bullet.DAMAGE * hitsfromtheirbullets))
+                        players[0].health = max(0, players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
                         msg = msg[1 + mplib.updatestruct.size : ]
                         remotebullets = []
                         while len(msg) > 0:
@@ -496,9 +450,9 @@ while True:
         players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
 
         if keystates[pygame.K_SPACE]:
-            if players[0].reloadstate <= 0 and players[0].batterylevel > Player.SHOOT_kJ:
+            if players[0].reloadstate <= 0 and players[0].batterylevel > settings['Player.kJ/shot'].val:
                 players[0].reloadstate += FPS * Player.RELOADTIME
-                players[0].batterylevel -= Player.SHOOT_kJ
+                players[0].batterylevel -= settings['Player.kJ/shot'].val
                 bull = Bullet(players[0])
                 bullets.add(bull)
 
@@ -522,11 +476,11 @@ while True:
                     if player == players[1]:  # but did we hit the other player or ourselves?
                         hitsdealt += 1
                     else:
-                        players[0].health = max(0, players[0].health - Bullet.DAMAGE)
+                        players[0].health = max(0, players[0].health - settings['Bullet.damage'].val)
 
         bullets.draw(screen)
         for bulletpos in remotebullets:
-            pygame.draw.circle(screen, Bullet.COLOR, bulletpos, Bullet.SIZE)
+            pygame.draw.circle(screen, Bullet.COLOR, bulletpos, settings['Bullet.size'].val)
 
         players[0].update()
         if SINGLEPLAYER:
@@ -540,11 +494,11 @@ while True:
             idis = h * Player.INDICATORDISTANCE
 
             # Draw battery level indicators
-            bl = player.batterylevel / Player.BATTERY_CAPACITY
+            bl = player.batterylevel / settings['Player.battSize'].val
             poweryellow = (255, 200, 0)
-            if player.batterylevel < Player.THRUST / Player.THRUST_PER_kJ:
+            if player.batterylevel < settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
                 indicatorcolor = (255, 0, 0)
-            elif player.batterylevel < Player.SHOOT_kJ:
+            elif player.batterylevel < settings['Player.kJ/shot'].val:
                 indicatorcolor = (255, 128, 0)
             else:
                 indicatorcolor = poweryellow
@@ -557,7 +511,7 @@ while True:
 
             # Draw health indicators
             healthgreen = (10, 230, 10)
-            indicatorcolor = healthgreen if player.health > Bullet.DAMAGE else (255, 100, 0)
+            indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else (255, 100, 0)
             # outer rectangle
             pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y - idis - 2), roundi((w * 2 + 2)),                 roundi(h * Player.INDICATORHEIGHT + 2)))
             # inner black area (same area as above but -1px on each side)
@@ -582,7 +536,7 @@ while True:
                 roundi(min(1000, max(-1000, players[0].speed.x * 100))),
                 roundi(min(1000, max(-1000, players[0].speed.y * 100))),
                 roundi(players[0].angle / 1.5),
-                roundi(players[0].batterylevel / Player.BATTERY_CAPACITY * 255),
+                roundi(players[0].batterylevel / settings['Player.battSize'].val * 255),
                 roundi(players[0].health * 255),
                 hitsdealt,
             )
@@ -608,7 +562,7 @@ while True:
                 initSinglePlayer()
                 statusmessage = ''
 
-    if SIMPLEGRAPHICS:  # draw circle: 31µs; blit: 288-600µs
+    if SIMPLEGRAPHICS:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
         pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
     else:
         screen.blit(gravitywell, gravitywellrect)
