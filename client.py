@@ -442,7 +442,12 @@ while True:
                         players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
                         players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
                         players[1].health = health / 255
-                        players[0].health = max(0, players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
+
+                        if hitsfromtheirbullets > 0:
+                            players[0].health = max(0, players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
+                            for _ in range(hitsfromtheirbullets):
+                                sparks.append(Spark(players[0].pos))
+
                         msg = msg[1 + mplib.updatestruct.size : ]
                         remotebullets = []
                         while len(msg) > 0:
