@@ -513,8 +513,13 @@ while True:
                     else:
                         players[0].health = max(0, players[0].health - settings['Bullet.damage'].val)
 
+        removesparks = []
         for spark in sparks:
-            spark.updateAndDraw(screen)
+            died = spark.updateAndDraw(screen)
+            if died:
+                removesparks.append(spark)
+        for spark in removesparks:
+            sparks.remove(spark)
 
         bullets.draw(screen)
         for bulletpos in remotebullets:
