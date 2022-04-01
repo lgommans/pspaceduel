@@ -57,16 +57,10 @@ class Bullet(pygame.sprite.Sprite):
 
 
 class Player:
-    SCALE = (0.25, 0.25)
-    OUT_OF_SCREEN = 1  # number of pixels of the player sprite that should still be visible before it wraps
     INDICATORHEIGHT = 0.18  # as a fraction of the player height after scaling
     INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
-    ROTATIONAL_SPEED = 4
+    ROTATIONAL_SPEED = 4  # degrees per game step. Left as player preference because I'm fine if they want to rotate faster... just costs more energy then
     ROTATIONAL_SPEED_FINE = 0.8
-    BATTERY_CAPACITY = 110  # kJ -- Ingenuity (Mars rover) has 130 kJ for comparison
-    # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds and other unrealistic things
-    RELOADTIME = 0.3  # seconds
-    MINRELOADSTATE = 0  # times the reloadtime, so -0.5 with reloadtime of 0.5 will be 'negative' 0.25 seconds reload state
 
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
@@ -74,7 +68,7 @@ class Player:
 
         self.n = n
         self.seqno = 0
-        self.img = pygame.transform.scale(img, (roundi(rect.width * Player.SCALE[0]), roundi(rect.height * Player.SCALE[1])))
+        self.img = pygame.transform.scale(img, (roundi(rect.width * settings['Player.scale'].val), roundi(rect.height * settings['Player.scale'].val)))
         self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
         self.spr.image = self.img
@@ -119,28 +113,28 @@ class Player:
             playerDied(other=False)
             return
 
-        if self.reloadstate > FPS * Player.RELOADTIME * Player.MINRELOADSTATE:
+        if self.reloadstate > FPS * settings['Player.reload'].val * settings['Player.minreload'].val:
             self.reloadstate -= 1
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
         accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), gravitywell_center, settings['Player.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
-        self.pos.x += self.speed.x / GRAVITATIONSTEPS
-        self.pos.y += self.speed.y / GRAVITATIONSTEPS
+        self.pos.x += self.speed.x
+        self.pos.y += self.speed.y
 
         if separation < (gravitywellrect.width / 2) + (self.spr.rect.width / 2):  # GW assumed to be spherical
             playerDied(other=False)
             return
 
-        if self.pos.x < Player.OUT_OF_SCREEN - self.spr.rect.width:
-            self.pos.x = SCREENSIZE[0] - Player.OUT_OF_SCREEN
-        elif self.pos.x > SCREENSIZE[0] - Player.OUT_OF_SCREEN:
-            self.pos.x = Player.OUT_OF_SCREEN - self.spr.rect.width
-        if self.pos.y < Player.OUT_OF_SCREEN - self.spr.rect.height:
-            self.pos.y = SCREENSIZE[1] - Player.OUT_OF_SCREEN
-        elif self.pos.y > SCREENSIZE[1] - Player.OUT_OF_SCREEN:
-            self.pos.y = Player.OUT_OF_SCREEN - self.spr.rect.height
+        if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width:
+            self.pos.x = SCREENSIZE[0] - settings['Player.visiblepx'].val
+        elif self.pos.x > SCREENSIZE[0] - settings['Player.visiblepx'].val:
+            self.pos.x = settings['Player.visiblepx'].val - self.spr.rect.width
+        if self.pos.y < settings['Player.visiblepx'].val - self.spr.rect.height:
+            self.pos.y = SCREENSIZE[1] - settings['Player.visiblepx'].val
+        elif self.pos.y > SCREENSIZE[1] - settings['Player.visiblepx'].val:
+            self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height
 
         if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
@@ -254,7 +248,6 @@ def timeme(out=True, th=0):  # params: show output; threshold above which it sho
 
 GAMEVERSION = 1
 GRAVITYCONSTANT = 6.6742e-11
-GRAVITATIONSTEPS = 1
 SCREENSIZE = (1440, 900)
 FPS = 60
 FRAMETIME = 1 / FPS
@@ -451,7 +444,7 @@ while True:
 
         if keystates[pygame.K_SPACE]:
             if players[0].reloadstate <= 0 and players[0].batterylevel > settings['Player.kJ/shot'].val:
-                players[0].reloadstate += FPS * Player.RELOADTIME
+                players[0].reloadstate += FPS * settings['Player.reload'].val
                 players[0].batterylevel -= settings['Player.kJ/shot'].val
                 bull = Bullet(players[0])
                 bullets.add(bull)

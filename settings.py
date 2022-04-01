@@ -52,6 +52,11 @@ settings = {
     'Bullet.relspeed': Setting(False, 'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
     'Bullet.size':     Setting(  2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
+
+    # Size of the player as a fraction of the image in the resources folder
+    'Player.scale':    Setting(  0.2, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    # How much of the player sprite should still be visible before it wraps when hitting the screen's edge (pixels)
+    'Player.visiblepx':Setting(  1,   'b'),
     # Start x and y, and initial speed, of player 1
     'Player1.x':       Setting(300,   'h'),
     'Player1.y':       Setting(300,   'h'),
@@ -65,6 +70,7 @@ settings = {
     # Size of the players' batteries (kilojoules)
     'Player.battSize': Setting(110,   'B'),
     # Strength of the players' engine (Newtons)
+    # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds so we need some oomph in here
     'Player.thrust':   Setting(300,   'H'),
     # How many Newtons do we get out of a kJ from the battery?
     'Player.thrust/kJ':Setting(800,   'H'),
@@ -74,9 +80,16 @@ settings = {
     'Player.kJ/shot':  Setting( 12,   'B'),
     # Weight of the spacecraft (kilograms)
     'Player.mass':     Setting(100,   'B'),
+    # Time required to reload the craft (seconds)
+    'Player.reload':   Setting(  0.4, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    # How much can the craft prepare a next shot to shoot faster bursts? Value multiplied with Player.reload, so -0.5 with Player.reload of 0.1 will be 'negative' 0.05 seconds reload state
+    'Player.minreload':Setting(  0.0, 'b', lambda n: int(round(n * 100)), lambda n: n / 100),
+
     # Weight of the star (kilograms)
     'GW.mass':         Setting(4e14,  'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting( 10,   'B'),
 }
+
+# TODO have local settings that should not be sync'd, such as bullet color
 
