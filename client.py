@@ -178,17 +178,12 @@ class Player:
 def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
     separation_x = obj1pos.x - obj2pos.x
     separation_y = obj1pos.y - obj2pos.y
-    separation = math.sqrt(separation_x * separation_x + separation_y * separation_y)
-    grav_accel = obj1mass * obj2mass / (separation * separation) * (FRAMETIME * GRAVITYCONSTANT)
+    separation_square = (separation_x * separation_x) + (separation_y * separation_y)
+    grav_accel = obj1mass * obj2mass / separation_square * (FRAMETIME * GRAVITYCONSTANT)
+    separation = math.sqrt(separation_square)
     dir_x = separation_x / separation
     dir_y = separation_y / separation
     return grav_accel / obj1mass * dir_x, grav_accel / obj1mass * dir_y, separation
-
-
-def distance(obj1, obj2):
-    sep_x = players[0].pos.x - players[1].pos.x
-    sep_y = players[0].pos.y - players[1].pos.y
-    return ((sep_x * sep_x) + (sep_y * sep_y))
 
 
 def playerDied(other=False, both=False, sendpacket=True):
@@ -298,6 +293,7 @@ FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
 PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 seconds
+SHOWBULLETGUIDE = True
 SIMPLEGRAPHICS = True
 SERVER = ('lucgommans.nl', 9473)
 SINGLEPLAYER = False
@@ -426,7 +422,7 @@ while True:
                         statusmessage += ' The other player restarted!'
                     else:
                         if state == STATE_PLAYERING:
-                            statusmessage = 'You win! The other player ' + str(reason, 'ASCII')
+                            statusmessage = 'You win with score ' + str(score) + '! The other player ' + str(reason, 'ASCII')
                         else:
                             statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(score)
                 elif msg[0] == 0:
@@ -561,13 +557,14 @@ while True:
             # health level (drawn over the black area)
             pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
 
-        b = Bullet(players[0], virtual=True)
-        for i in range(PREDICTIONDISTANCE):
-            oldpos = pygame.math.Vector2(b.pos)
-            died = b.advance()
-            if died:
-                break
-            pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
+        if SHOWBULLETGUIDE:
+            b = Bullet(players[0], virtual=True)
+            for i in range(PREDICTIONDISTANCE):
+                oldpos = pygame.math.Vector2(b.pos)
+                died = b.advance()
+                if died:
+                    break
+                pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
 
 
         if not SINGLEPLAYER:
