@@ -1,4 +1,19 @@
 
+'''
+  Hello! This is your settings file speaking. Yes, I know. Please remain calm. You are OK.
+  
+  The game has three kinds of parameters:
+
+    - User preferences: the variable 'prefs' below.
+      Things like game colors can be modified freely.
+
+    - Game settings: the variable 'settings' below.
+      Things like bullet speed. These will be sent to the other player if you connect or restart before the other player does; otherwise, their settings will be sent to you.
+
+    - Constants
+      These affect gameplay and cannot be changed: you game would become incompatible. These cannot be found in this file.
+'''
+
 import math, struct
 
 class Setting:
@@ -39,6 +54,42 @@ class Setting:
         else:
             self.deserialize = lambda v: v
 
+
+prefs = {
+    # Default server to connect to
+    'Multiplayer.server': 'lucgommans.nl:9473',
+    # Average seconds between determining the bidirectional connection latency. The actual value is chosen in the range (pinginterval÷2, pinginterval×2).
+    # This is just an informational value that is printed to the console and actually includes frame time (=not very accurate).
+    'Multiplayer.pinginterval': 4,
+
+    # Use simpler, faster graphics (currently does not make a big difference)
+    'Game.simple_graphics': False,
+
+    # Show a prediction line for bullets
+    'Game.show_aim_guide':  True,
+
+    # Degrees you rotate per game step while holding down the left or right arrow key. Each degree requires a certain amount of energy so changing the value will not impact your energy consumption.
+    'Player.rotate_speed':      4,  
+    # Same, but while holding Shift + arrow left or right.
+    'Player.rotate_speed_fine': 1,
+
+    # How big/tall should the health and energy indicators be, as a fraction of the player height after scaling?
+    'Player.indicator_height':   0.18,
+    # How far away should these indicators be, as a fraction of the player height after scaling?
+    'Player.indicator_distance': 0.6,
+
+    # Number of frames for which a spark will exist, randomly chosen within this interval
+    'Spark.lifespan': (4, 10),
+    # Number of pixels it randomly moves per frame in each direction, randomly chosen within this interval. The direction (positive or negative) is a 50/50 chance.
+    'Spark.movement': (1, 2),
+    # The degrees it rotates per frame, randomly chosen within this interval. The direction (positive or negative rotation) is a 50/50 chance.
+    'Spark.rotation': (2, 90),
+    # The image used for sparks
+    'Spark.graphic':  'res/venting.png',
+
+    # Amount of red, green, and blue as a value from 0-255
+    'Bullet.color':   (240, 120, 0),
+}
 
 # These settings are applied in single player and when you are the first player to arrive in a multiplayer game
 settings = {
@@ -90,6 +141,4 @@ settings = {
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting( 10,   'B'),
 }
-
-# TODO have local settings that should not be sync'd, such as bullet color
 

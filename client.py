@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 
-import sys, math, socket, time, threading, random
+import sys, os, math, time, random, socket, threading
 import pygame
 import mplib
-from settings import Setting, settings
+from settings import Setting, settings, prefs
 from luclib import *
 
 class Spark:
-    LIFESPAN = (4, 10)  # frames: (min, max)
-    MOVEMENT = (1, 2)  # pixels it randomly moves per frame in each direction: (min, max)
-    ROTATION = (2, 90)  # range of the degrees it rotates per frame: (min, max). The direction (positive or negative rotation) is a 50/50 chance
-    IMAGE = pygame.image.load('res/venting.png')
-
     def __init__(self, pos):
         self.pos = pygame.math.Vector2(pos)
-        self.lifespan = random.randint(*Spark.LIFESPAN)
+        self.lifespan = random.randint(*prefs['Spark.lifespan'])
         self.angle = random.randint(0, 360)
-        self.rotation = random.randint(*Spark.ROTATION) * (-1 if random.randint(1, 2) == 1 else 1)
+        self.rotation = random.randint(*prefs['Spark.rotation']) * (-1 if random.randint(1, 2) == 1 else 1)
 
     def updateAndDraw(self, screen):
         # returns whether it needs to be destroyed
@@ -25,8 +20,8 @@ class Spark:
         if self.lifespan <= 0:
             return True
 
-        self.pos.x += random.randint(*Spark.MOVEMENT) * (-1 if random.randint(1, 2) == 1 else 1)
-        self.pos.y += random.randint(*Spark.MOVEMENT) * (-1 if random.randint(1, 2) == 1 else 1)
+        self.pos.x += random.randint(*prefs['Spark.movement']) * (-1 if random.randint(1, 2) == 1 else 1)
+        self.pos.y += random.randint(*prefs['Spark.movement']) * (-1 if random.randint(1, 2) == 1 else 1)
         self.angle += self.rotation
 
         rotated_image = pygame.transform.rotate(Spark.IMAGE, self.angle)
@@ -34,7 +29,6 @@ class Spark:
 
 
 class Bullet(pygame.sprite.Sprite):
-    COLOR = (240, 120, 0)
     # multiplied with the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere when the shot was just below escape velocity
     MAX_OUT_OF_SCREEN = 0.25
 
@@ -57,7 +51,7 @@ class Bullet(pygame.sprite.Sprite):
             bulletsize = settings['Bullet.size'].val
             self.image = pygame.surface.Surface((bulletsize * 2, bulletsize * 2), pygame.SRCALPHA)
             self.rect = self.image.get_rect(center=self.pos)
-            pygame.draw.circle(self.image, Bullet.COLOR, (bulletsize, bulletsize), bulletsize)
+            pygame.draw.circle(self.image, prefs['Bullet.color'], (bulletsize, bulletsize), bulletsize)
             self.image = self.image.convert()
 
     def advance(self):
@@ -82,11 +76,6 @@ class Bullet(pygame.sprite.Sprite):
 
 
 class Player:
-    INDICATORHEIGHT = 0.18  # as a fraction of the player height after scaling
-    INDICATORDISTANCE = 0.6  # as a fraction of the player height after scaling
-    ROTATIONAL_SPEED = 4  # degrees per game step. Left as player preference because I'm fine if they want to rotate faster... just costs more energy then
-    ROTATIONAL_SPEED_FINE = 0.8
-
     def __init__(self, n):
         img = pygame.image.load(f'res/player{n}.png')
         rect = img.get_rect()
@@ -126,7 +115,7 @@ class Player:
         if direction == 0:
             return
 
-        rotationamount = direction * (Player.ROTATIONAL_SPEED if not fine else Player.ROTATIONAL_SPEED_FINE)
+        rotationamount = direction * (prefs['Player.rotate_speed'] if not fine else prefs['Player.rotate_speed_fine'])
         if self.batterylevel > abs(rotationamount) / settings['Player.rot/kJ'].val:
             self.batterylevel -= abs(rotationamount) / settings['Player.rot/kJ'].val
             self.angle += rotationamount
@@ -225,6 +214,8 @@ class Game:
         self.players[1].reinitialize()
 
     def connect(self, server):
+        global statusmessage
+
         self.server = server
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setblocking(0)
@@ -393,7 +384,7 @@ class Game:
 
     def schedulePing(self):
         # game step countdown
-        self.nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
+        self.nextPingAt = random.randint(FPS * (prefs['Multiplayer.pinginterval'] / 2), FPS * (prefs['Multiplayer.pinginterval'] * 2))
         self.pingSentAt = None
 
     def recvFromNetwork(self):
@@ -438,6 +429,21 @@ def quitProgram(reason, exitstatus=0):
     sys.exit(exitstatus)
 
 
+def prepareHostAndPort(hostAndPort, defaultport=9473):
+    # Parse into an (IP, port) tuple for passing to socket.sendto() or socket.connect()
+
+    if ':' not in hostAndPort:
+        hostOrIP = hostAndPort
+        port = defaultport
+    else:
+        hostOrIP, port = hostAndPort.split(':', 1)
+        port = int(port)
+
+    ip = socket.gethostbyname(hostOrIP)
+
+    return (ip, port)
+
+
 def initSinglePlayer():
     game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
     game.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
@@ -448,16 +454,44 @@ def initSinglePlayer():
     game.state = STATE_PLAYERING
 
 
+def parseArgs(argv):
+    if '-h' in argv or '--help' in argv:
+        print('''
+Usage:
+    {me}
+       Play the game online with default settings.
+    {me} <hostname>
+       Connect to a different server.
+    {me} <hostname:port>
+       Connect to a different server at a specific port.
+    {me} --singleplayer
+       Play a dummy game offline. Mainly for testing purposes.
+
+For settings, see `settings.py`.
+For how to play, see `README.txt`.
+For running a server, see `server.py`.
+'''.lstrip().format(me=os.path.basename(argv[0])))
+        sys.exit(1)
+
+    args = {
+        'singleplayer': False,
+        'server':       None,
+    }
+
+    if '--singleplayer' in argv:
+        args['singleplayer'] = True
+    elif len(argv) == 2:
+        args['server'] = argv[1]
+
+    return args
+
+
 GRAVITYCONSTANT = 6.6742e-11
 SCREENSIZE = (1440, 900)
 FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
-PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 seconds
-SHOWBULLETGUIDE = True
-SIMPLEGRAPHICS = True
-SERVER = ('lucgommans.nl', 9473)
 
 STATE_INITIAL   = 0
 STATE_HELLOSENT = 1
@@ -466,6 +500,8 @@ STATE_MATCHED   = 3
 STATE_PLAYERING = 4
 STATE_DEAD      = 5
 
+args = parseArgs(sys.argv)
+
 # don't just pygame.init() because it will hang and not quit when you do pygame.quit();sys.exit();. Stackoverflow suggests in 2013 this was a Wheezy bug, but it works on a
 # newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is also literally 20 times faster (0.02 instead of 0.4 s)!
 pygame.display.init()
@@ -473,10 +509,7 @@ pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 fpslimiter = pygame.time.Clock()
 screen = pygame.display.set_mode(SCREENSIZE)
-
-# if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
-# else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
-SERVER = (socket.gethostbyname(SERVER[0]), SERVER[1])
+statusmessage = ''
 
 # TODO probably wouldn't be bad if this were a class, too
 gravitywell = pygame.image.load(f'res/sun.png')
@@ -487,8 +520,17 @@ gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
 gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 
-game = Game(singleplayer=False)
-statusmessage = ''
+if not args['singleplayer']:
+    # if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
+    # else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
+    if args['server'] is not None:
+        SERVER = prepareHostAndPort(args['server'])
+    else:
+        SERVER = prepareHostAndPort(prefs['Multiplayer.server'])
+
+Spark.IMAGE = pygame.image.load(prefs['Spark.graphic']).convert_alpha()
+
+game = Game(singleplayer=args['singleplayer'])
 
 if game.singleplayer:
     initSinglePlayer()
@@ -554,7 +596,7 @@ while True:
 
         game.bullets.draw(screen)
         for bulletpos in game.remotebullets:
-            pygame.draw.circle(screen, Bullet.COLOR, bulletpos, settings['Bullet.size'].val)
+            pygame.draw.circle(screen, prefs['Bullet.color'], bulletpos, settings['Bullet.size'].val)
 
         game.players[0].update()
         if game.singleplayer:
@@ -565,7 +607,7 @@ while True:
 
             w, h = player.spr.rect.width, player.spr.rect.height
             x, y = player.spr.rect.center
-            idis = h * Player.INDICATORDISTANCE
+            idis = h * prefs['Player.indicator_distance']
 
             # Draw battery level indicators
             bl = player.batterylevel / settings['Player.battSize'].val
@@ -577,23 +619,23 @@ while True:
             else:
                 indicatorcolor = poweryellow
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y + h + idis + 1), roundi((w * 2 + 2)), roundi(h * Player.INDICATORHEIGHT + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y + h + idis + 1), roundi((w * 2 + 2)), roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0)), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0)), roundi(h * prefs['Player.indicator_height'] + 0)))
             # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * prefs['Player.indicator_height'] + 0)))
 
             # Draw health indicators
             healthgreen = (10, 230, 10)
             indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else (255, 100, 0)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y - idis - 2), roundi((w * 2 + 2)),                 roundi(h * Player.INDICATORHEIGHT + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y - idis - 2), roundi((w * 2 + 2)),                 roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0)),                 roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
+            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
 
-        if SHOWBULLETGUIDE:
+        if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
             for i in range(PREDICTIONDISTANCE):
                 oldpos = pygame.math.Vector2(b.pos)
@@ -613,7 +655,7 @@ while True:
                 game.sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
                 game.connect(SERVER)
 
-    if SIMPLEGRAPHICS:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
+    if prefs['Game.simple_graphics']:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
         pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
     else:
         screen.blit(gravitywell, gravitywellrect)
