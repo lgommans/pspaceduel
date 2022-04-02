@@ -52,7 +52,7 @@ class Bullet(pygame.sprite.Sprite):
             self.image = pygame.surface.Surface((bulletsize * 2, bulletsize * 2), pygame.SRCALPHA)
             self.rect = self.image.get_rect(center=self.pos)
             pygame.draw.circle(self.image, prefs['Bullet.color'], (bulletsize, bulletsize), bulletsize)
-            self.image = self.image.convert()
+            self.image = self.image.convert_alpha()
 
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
@@ -530,6 +530,9 @@ if not args['singleplayer']:
 
 Spark.IMAGE = pygame.image.load(prefs['Spark.graphic']).convert_alpha()
 
+if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
+    bgimg = pygame.image.load(prefs['Game.backgroundimage']).convert_alpha()
+
 game = Game(singleplayer=args['singleplayer'])
 
 if game.singleplayer:
@@ -549,7 +552,10 @@ while True:
     if keystates[pygame.K_ESCAPE]:
         quitProgram(reason='escaped the arena')
 
-    screen.fill((0, 0, 0))  # TODO background
+    if prefs['Game.simple_graphics'] or prefs['Game.backgroundimage'] is None:
+        screen.fill((0, 0, 0))
+    else:
+        screen.blit(bgimg, (0, 0))
 
     if game.state == STATE_PLAYERING:
         game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
@@ -642,7 +648,7 @@ while True:
                 died = b.advance()
                 if died:
                     break
-                pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
+                pygame.draw.line(screen, prefs['Game.aim_guide_color'], oldpos, b.pos)
 
 
         game.sendUpdatePacket()

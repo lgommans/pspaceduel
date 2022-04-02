@@ -1,0 +1,4 @@
+General code: TODO.
+
+The file res/stackoverflow-frisa-theme-renderedbackground.png is copyright StackOverflow
+

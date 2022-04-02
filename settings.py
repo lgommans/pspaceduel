@@ -64,9 +64,13 @@ prefs = {
 
     # Use simpler, faster graphics (currently does not make a big difference)
     'Game.simple_graphics': False,
+    # The base image that goes behind everything else, set to None for, well, none
+    'Game.backgroundimage': 'res/stackoverflow-frisa-theme-renderedbackground.png',
 
     # Show a prediction line for bullets
     'Game.show_aim_guide':  True,
+    # The color of the line
+    'Game.aim_guide_color': (255, 0, 0),  # default for black background: (80, 0, 0)
 
     # Degrees you rotate per game step while holding down the left or right arrow key. Each degree requires a certain amount of energy so changing the value will not impact your energy consumption.
     'Player.rotate_speed':      4,  
@@ -88,7 +92,7 @@ prefs = {
     'Spark.graphic':  'res/venting.png',
 
     # Amount of red, green, and blue as a value from 0-255
-    'Bullet.color':   (240, 120, 0),
+    'Bullet.color':   (0, 0, 0),
 }
 
 # These settings are applied in single player and when you are the first player to arrive in a multiplayer game
