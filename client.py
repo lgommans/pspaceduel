@@ -176,6 +176,7 @@ class Player:
 class Game:
     def __init__(self, singleplayer):
         self.singleplayer = singleplayer
+
         self.score = 0
         self.roundscore = 0
         self.players = [
@@ -183,10 +184,11 @@ class Game:
             Player(2),
         ]
 
-        if singleplayer:
-            self.state = STATE_PLAYERING
-        else:
-            self.state = STATE_INITIAL
+        if not singleplayer:
+            self.stopSendtoThread = False
+            self.msgQueue = []  # apparently a regular list is thread-safe in python in 2022
+            self.msgQueueEvent = threading.Event()
+            threading.Thread(target=self.sendto).start()
 
         self.newRound()
 
@@ -200,7 +202,7 @@ class Game:
             self.roundscore = 1
             statusmessage = 'You tied: 1 point! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
             if not game.singleplayer and sendpacket:
-                sendtoQueued(b'\x01\x01')
+                self.sendtoQueued(b'\x01\x01')
         else:
             if other:
                 self.roundscore = 5
@@ -209,7 +211,7 @@ class Game:
                 self.roundscore = 0
                 statusmessage = 'You died. Your score: ' + str(self.score) + '. Press Enter to restart.'
                 if not game.singleplayer and sendpacket:
-                    sendtoQueued(b'\x01')
+                    self.sendtoQueued(b'\x01')
 
     def newRound(self):
         if self.roundscore > 0:
@@ -221,6 +223,190 @@ class Game:
         self.roundscore = 0
         self.players[0].reinitialize()
         self.players[1].reinitialize()
+
+    def connect(self, server):
+        self.server = server
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setblocking(0)
+        self.sock.sendto(mplib.clienthello, server)  # using sendtoQueued() here makes recvfrom() give an error on Windows
+        self.state = STATE_HELLOSENT
+        statusmessage = 'Waiting for server initial response...'
+
+    def sendto(self):
+        while True:
+            if len(self.msgQueue) == 0:
+                # Doing this thread blocking/unblocking is ~13× faster than starting a new thread for every packet
+                self.msgQueueEvent.clear()
+                self.msgQueueEvent.wait()
+
+            if self.stopSendtoThread:
+                return
+
+            try:
+                msg = self.msgQueue.pop(0)
+                self.sock.sendto(msg, self.server)
+            except IndexError:
+                # We somehow managed to try and pop an empty list
+                print('moin? We were asked to send something but there is nothing in the queue? Going back to sleep...')
+
+
+    def sendtoQueued(self, msg):
+        self.msgQueue.append(msg)
+        self.msgQueueEvent.set()
+
+    def stopMultiplayer(self, reason):
+        self.sock.sendto(mplib.playerquits + reason.encode('ASCII'), self.server)
+        self.stopSendtoThread = True
+        self.msgQueueEvent.set()
+        self.nextPingAt = None
+
+    def processIncomingPacket(self, msg):
+        global statusmessage
+
+        if self.state == STATE_HELLOSENT:
+            if msg[0 : len(mplib.serverhello)] != mplib.serverhello:
+                statusmessage = 'Server protocol error, please restart the game.'
+            else:
+                mptoken = msg[len(mplib.serverhello) : ]
+                self.sendtoQueued(mptoken)
+                self.state = STATE_TOKENSENT
+                statusmessage = 'Completing server handshake...'
+
+                self.newRound()
+                self.schedulePing()
+
+                self.players[0].seqno += 1
+
+
+        elif self.state == STATE_TOKENSENT:
+            if msg == mplib.urplayerone:
+                statusmessage = 'Server connection established. Waiting for another player to join this server...'
+                self.players[0].n = 1
+                self.players[1].n = 2
+            elif msg == mplib.playerfound:
+                self.state = STATE_MATCHED
+                reply = mplib.settingsmsg + Setting.serializeSettings(settings)
+                self.sock.sendto(reply, SERVER)
+                self.sock.sendto(reply, ('127.0.0.1', self.sock.getsockname()[1]))  # also send it to ourselves
+            elif msg == mplib.urplayertwo:
+                statusmessage = 'Server found a match! Waiting for the other player to send game data...'
+                self.players[0].n = 2
+                self.players[1].n = 1
+                self.state = STATE_MATCHED
+            else:
+                statusmessage = 'Server protocol error, please restart the game.'
+                print('Got from server:', msg)
+
+        elif self.state == STATE_MATCHED:
+            if msg[ : len(mplib.settingsmsg)] != mplib.settingsmsg:
+                print('Waiting for initial setup data, got this instead: ', msg)
+                return
+
+            Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
+
+            self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+            self.players[self.players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+            self.players[self.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+            self.players[self.players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+            self.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
+            self.state = STATE_PLAYERING
+            statusmessage = ''
+
+        elif self.state in (STATE_PLAYERING, STATE_DEAD):
+            if msg.startswith(mplib.playerquits):
+                reason = msg[len(mplib.playerquits) : ]
+                if reason == mplib.restartpl0x:
+                    statusmessage += ' The other player restarted!'
+                else:
+                    if self.state == STATE_PLAYERING:
+                        statusmessage = 'You win with score ' + str(self.score) + '! The other player ' + str(reason, 'ASCII')
+                    else:
+                        statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(self.score)
+            elif msg[0] == 0:
+                seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = mplib.updatestruct.unpack(msg[1 : 1 + mplib.updatestruct.size])
+                if seqno <= self.players[1].seqno:
+                    print('Ignored seqno', seqno, ' because the last seqno for this player was', self.players[1].seqno)
+                else:
+                    if seqno - 1 != self.players[1].seqno:
+                        print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', self.players[1].seqno)
+                    self.players[1].seqno = seqno
+                    self.players[1].angle = angle * 1.5
+                    self.players[1].pos = pygame.math.Vector2(x, y)
+                    self.players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
+                    self.players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
+                    self.players[1].health = health / 255
+
+                    if hitsfromtheirbullets > 0:
+                        self.players[0].health = max(0, self.players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
+                        for _ in range(hitsfromtheirbullets):
+                            self.sparks.append(Spark(self.players[0].pos))
+
+                    msg = msg[1 + mplib.updatestruct.size : ]
+                    self.remotebullets = []
+                    while len(msg) > 0:
+                        x, y = mplib.bulletstruct.unpack(msg[ : mplib.bulletstruct.size])
+                        self.remotebullets.append((x, y))
+                        msg = msg[mplib.bulletstruct.size : ]
+
+            elif msg[0] == 1:
+                if len(msg) > 1 and msg[1] == 1:
+                    self.playerDied(both=True, sendpacket=False)
+                else:
+                    self.playerDied(other=True)
+
+            elif msg[0] == 2:
+                self.sendtoQueued(b'\x03')
+
+            elif msg[0] == 3:
+                if self.pingSentAt is not None:
+                    ping = (time.time() - self.pingSentAt) * 1000  # ms
+                    print('Ping time:', round(ping), 'ms')
+                    self.pingSentAt = None
+                    self.schedulePing()
+
+    def sendUpdatePacket(self):
+        if self.singleplayer:
+            return
+
+        msg = b'\x00' + mplib.updatestruct.pack(
+            self.players[0].seqno,
+            roundi(min(SCREENSIZE[0] + 1000, max(-1000, self.players[0].pos.x))),
+            roundi(min(SCREENSIZE[1] + 1000, max(-1000, self.players[0].pos.y))),
+            roundi(min(1000, max(-1000, self.players[0].speed.x * 100))),
+            roundi(min(1000, max(-1000, self.players[0].speed.y * 100))),
+            roundi(self.players[0].angle / 1.5),
+            roundi(self.players[0].batterylevel / settings['Player.battSize'].val * 255),
+            roundi(self.players[0].health * 255),
+            self.players[0].hitsdealt,
+        )
+        for bullet in self.bullets:
+            msg += mplib.bulletstruct.pack(roundi(bullet.pos.x), roundi(bullet.pos.y))
+        self.sendtoQueued(msg)
+        self.players[0].seqno += 1
+        self.players[0].hitsdealt = 0
+
+        if self.nextPingAt is not None:
+            self.nextPingAt -= 1
+            if self.nextPingAt <= 0:
+                self.sendtoQueued(b'\x02')
+                pingSentAt = time.time()
+
+    def schedulePing(self):
+        # game step countdown
+        self.nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
+        self.pingSentAt = None
+
+    def recvFromNetwork(self):
+        for _ in range(15):  # process up to N packets per frame (send rate is only ~1.01 packets per frame, this is for catching up / jitter)
+            try:
+                msg, addr = self.sock.recvfrom(mplib.maximumsize)
+            except BlockingIOError:
+                msg = b''
+
+            if msg == b'':
+                break  # no (more) data from the network
+            else:
+                self.processIncomingPacket(msg)
 
 
 def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
@@ -245,13 +431,9 @@ def blitRotateCenter(surf, image, pos, angle):
     surf.blit(rotated_image, new_rect)
 
 
-def stopgame(reason, exitstatus=0):
-    global stopSendtoThread
-
+def quitProgram(reason, exitstatus=0):
     if not game.singleplayer:
-        stopSendtoThread = True
-        msgQueueEvent.set()
-        sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
+        game.stopMultiplayer(reason)
 
     sys.exit(exitstatus)
 
@@ -263,29 +445,7 @@ def initSinglePlayer():
     game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
     game.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
     game.newRound()
-
-
-def sendto():
-    while True:
-        if len(msgQueue) == 0:
-            # Doing this thread blocking/unblocking is ~13× faster than starting a new thread for every packet
-            msgQueueEvent.clear()
-            msgQueueEvent.wait()
-
-        if stopSendtoThread:
-            break
-
-        try:
-            msg = msgQueue.pop(0)
-            sock.sendto(msg, SERVER)
-        except IndexError:
-            # We somehow managed to try and pop an empty list
-            print('moin? We were asked to send something but there is nothing in the queue? Going back to sleep...')
-
-
-def sendtoQueued(msg):
-    msgQueue.append(msg)
-    msgQueueEvent.set()
+    game.state = STATE_PLAYERING
 
 
 GRAVITYCONSTANT = 6.6742e-11
@@ -328,142 +488,26 @@ gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 
 game = Game(singleplayer=False)
+statusmessage = ''
 
 if game.singleplayer:
-    statusmessage = ''
     initSinglePlayer()
 else:
-    sock = None
-    stopSendtoThread = False
-    msgQueue = []  # apparently a regular list is thread-safe in python in 2022
-    msgQueueEvent = threading.Event()
-    threading.Thread(target=sendto).start()
+    game.connect(SERVER)
 
 while True:
     if not game.singleplayer:
-        if game.state == STATE_INITIAL:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setblocking(0)
-            sock.sendto(mplib.clienthello, SERVER)  # using sendtoQueued() here makes recvfrom() give an error on Windows
-            mptoken = None
-            game.state = STATE_HELLOSENT
-            statusmessage = 'Waiting for server initial response...'
-
-        for _ in range(15):  # process up to N packets per frame (send rate is 1.x per frame)
-            try:
-                msg, addr = sock.recvfrom(mplib.maximumsize)
-            except BlockingIOError:
-                msg = b''
-            if msg == b'':
-                break  # no multiplayer updates
-            elif game.state == STATE_HELLOSENT:
-                if msg[0 : len(mplib.serverhello)] != mplib.serverhello:
-                    statusmessage = 'Server protocol error, please restart the game.'
-                else:
-                    mptoken = msg[len(mplib.serverhello) : ]
-                    sendtoQueued(mptoken)
-                    game.state = STATE_TOKENSENT
-                    statusmessage = 'Completing server handshake...'
-
-                    game.newRound()
-
-                    pingSentAt = None
-                    nextPingAt = random.randint(FPS * 3, FPS * 4)  # seqno
-                    game.players[0].seqno += 1
-
-
-            elif game.state == STATE_TOKENSENT:
-                if msg == mplib.urplayerone:
-                    statusmessage = 'Server connection established. Waiting for another player to join this server...'
-                    game.players[0].n = 1
-                    game.players[1].n = 2
-                elif msg == mplib.playerfound:
-                    game.state = STATE_MATCHED
-                    reply = Setting.serializeSettings(settings)
-                    sock.sendto(reply, SERVER)
-                    sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
-                elif msg == mplib.urplayertwo:
-                    statusmessage = 'Server found a match! Waiting for the other player to send game data...'
-                    game.players[0].n = 2
-                    game.players[1].n = 1
-                    game.state = STATE_MATCHED
-                else:
-                    statusmessage = 'Server protocol error, please restart the game.'
-                    print('Got from server:', msg)
-
-            elif game.state == STATE_MATCHED:
-                Setting.updateSettings(settings, msg)
-
-                game.players[game.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
-                game.players[game.players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-                game.players[game.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
-                game.players[game.players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
-                game.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
-                game.state = STATE_PLAYERING
-                statusmessage = ''
-
-            elif game.state in (STATE_PLAYERING, STATE_DEAD):
-                if msg.startswith(mplib.playerquits):
-                    print('other player sent:', msg)
-                    reason = msg[len(mplib.playerquits) : ]
-                    if reason == mplib.restartpl0x:
-                        statusmessage += ' The other player restarted!'
-                    else:
-                        if game.state == STATE_PLAYERING:
-                            statusmessage = 'You win with score ' + str(score) + '! The other player ' + str(reason, 'ASCII')
-                        else:
-                            statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(score)
-                elif msg[0] == 0:
-                    seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = mplib.updatestruct.unpack(msg[1 : 1 + mplib.updatestruct.size])
-                    if seqno <= game.players[1].seqno:
-                        print('Ignored seqno', seqno, ' because the last seqno for this player was', game.players[1].seqno)
-                    else:
-                        if seqno - 1 != game.players[1].seqno:
-                            print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', game.players[1].seqno)
-                        game.players[1].seqno = seqno
-                        game.players[1].angle = angle * 1.5
-                        game.players[1].pos = pygame.math.Vector2(x, y)
-                        game.players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
-                        game.players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
-                        game.players[1].health = health / 255
-
-                        if hitsfromtheirbullets > 0:
-                            game.players[0].health = max(0, game.players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
-                            for _ in range(hitsfromtheirbullets):
-                                game.sparks.append(Spark(game.players[0].pos))
-
-                        msg = msg[1 + mplib.updatestruct.size : ]
-                        game.remotebullets = []
-                        while len(msg) > 0:
-                            x, y = mplib.bulletstruct.unpack(msg[ : mplib.bulletstruct.size])
-                            game.remotebullets.append((x, y))
-                            msg = msg[mplib.bulletstruct.size : ]
-
-                elif msg[0] == 1:
-                    if len(msg) > 1 and msg[1] == 1:
-                        game.playerDied(both=True, sendpacket=False)
-                    else:
-                        game.playerDied(other=True)
-
-                elif msg[0] == 2:
-                    sendtoQueued(b'\x03')
-
-                elif msg[0] == 3:
-                    if pingSentAt is not None:
-                        ping = (time.time() - pingSentAt) * 1000  # ms
-                        print('Ping time:', round(ping), 'ms')
-                        pingSentAt = None
-
+        game.recvFromNetwork()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            stopgame(reason='fled the arena')
+            quitProgram(reason='fled the arena')
     keystates = pygame.key.get_pressed()
 
     if keystates[pygame.K_ESCAPE]:
-        stopgame(reason='fled the arena')
+        quitProgram(reason='escaped the arena')
 
-    screen.fill((0, 0, 0))
+    screen.fill((0, 0, 0))  # TODO background
 
     if game.state == STATE_PLAYERING:
         game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
@@ -559,38 +603,15 @@ while True:
                 pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
 
 
-        if not game.singleplayer:
-            msg = b'\x00' + mplib.updatestruct.pack(
-                game.players[0].seqno,
-                roundi(min(SCREENSIZE[0] + 1000, max(-1000, game.players[0].pos.x))),
-                roundi(min(SCREENSIZE[1] + 1000, max(-1000, game.players[0].pos.y))),
-                roundi(min(1000, max(-1000, game.players[0].speed.x * 100))),
-                roundi(min(1000, max(-1000, game.players[0].speed.y * 100))),
-                roundi(game.players[0].angle / 1.5),
-                roundi(game.players[0].batterylevel / settings['Player.battSize'].val * 255),
-                roundi(game.players[0].health * 255),
-                game.players[0].hitsdealt,
-            )
-            for bullet in game.bullets:
-                msg += mplib.bulletstruct.pack(roundi(bullet.pos.x), roundi(bullet.pos.y))
-            game.players[0].seqno += 1
-            game.players[0].hitsdealt = 0
-            sendtoQueued(msg)
-
-            nextPingAt -= 1
-            if nextPingAt <= 0:
-                sendtoQueued(b'\x02')
-                pingSentAt = time.time()
-                nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
+        game.sendUpdatePacket()
     elif game.state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
             if game.singleplayer:
-                game.state = STATE_PLAYERING
                 initSinglePlayer()
                 statusmessage = ''
             else:
-                sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
-                game.state = STATE_INITIAL
+                game.sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
+                game.connect(SERVER)
 
     if SIMPLEGRAPHICS:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
         pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)

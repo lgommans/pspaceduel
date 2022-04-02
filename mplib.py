@@ -11,6 +11,7 @@ playerfound = b'Player 2 found!'
 playerquits = b'I take my leave since '
 restartpl0x = b'I would like to play another round on this server!'
 playerlimit = b'FULL'
+settingsmsg = b'The config do be like this:'
 
 '''
 - uint   sequence number
