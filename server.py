@@ -7,17 +7,18 @@ def genToken():
     return hashlib.sha256(os.urandom(12)).digest()[0 : 12]
 
 
-TIMEOUT = 600
-MAXPLAYERS = 100
 PORT = 9473
+BINDIP = '0.0.0.0'
+MAXPLAYERS = 100
+PLAYERTIMEOUT = 600
 
 STATE_POLITELY_GREETED = 1
 STATE_SHOWN_WORTHINESS = 2
-STATE_MATCHED_TOGETHER = 3
+STATE_MARRIED_A_PLAYER = 3
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', PORT))
+sock.bind((BINDIP, PORT))
 
 clients = {}
 
@@ -25,7 +26,7 @@ while True:
     try:  # wrap this whole thing in a try so bugs are not immediately fatal
         msg, addr = sock.recvfrom(mplib.maximumsize)
 
-        timed_out = [client for client in clients if clients[client]['lastseen'] < time.time() - TIMEOUT]
+        timed_out = [client for client in clients if clients[client]['lastseen'] < time.time() - PLAYERTIMEOUT]
         for client in timed_out:
             # if 'partner' in clients[client]:  # honestly, the timeout is such that the 'partner' is long aware of their absence...
             del clients[client]
@@ -78,16 +79,16 @@ while True:
                         if clients[client]['state'] == STATE_SHOWN_WORTHINESS and client != addr:  # if there is another client waiting, match them up!
                             found = True
                             clients[client]['partner'] = addr
-                            clients[client]['state'] = STATE_MATCHED_TOGETHER
+                            clients[client]['state'] = STATE_MARRIED_A_PLAYER
                             clients[addr]['partner'] = client
-                            clients[addr]['state'] = STATE_MATCHED_TOGETHER
+                            clients[addr]['state'] = STATE_MARRIED_A_PLAYER
                             sock.sendto(mplib.urplayertwo, addr)
                             sock.sendto(mplib.playerfound, client)
 
                     if not found:
                         sock.sendto(mplib.urplayerone, addr)
 
-            elif clients[addr]['state'] == STATE_MATCHED_TOGETHER:
+            elif clients[addr]['state'] == STATE_MARRIED_A_PLAYER:
                 sock.sendto(msg, clients[addr]['partner'])
     except Exception as e:
         print('{} in {} line {}'.format(
