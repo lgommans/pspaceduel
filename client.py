@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import sys, math, socket, time, threading, random
-from inspect import currentframe  # temporarily for timeme()
 import pygame
 import mplib
 from settings import Setting, settings
@@ -72,7 +71,7 @@ class Bullet(pygame.sprite.Sprite):
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        if players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # GW assumed to be spherical
+        if game.players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # GW assumed to be spherical
             return True
 
         if self.pos.x < -SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN or self.pos.x > SCREENSIZE[0] + (SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN) \
@@ -109,6 +108,7 @@ class Player:
         self.health = 1  # 0-1
         self.batterylevel = settings['Player.battSize'].val
         self.reloadstate = 0
+        self.hitsdealt = 0
 
     def thrust(self):
         if self.batterylevel > settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
@@ -135,13 +135,11 @@ class Player:
             self.spr.mask = pygame.mask.from_surface(rotated_image)
 
     def update(self):  # this function should only be run on the local player, since it calls playerDied which triggers network events
-        global gamescore
-
         if self.health <= 0:
-            if SINGLEPLAYER and self == players[1]:
-                playerDied(other=True)
+            if game.singleplayer and self == game.players[1]:
+                game.playerDied(other=True)
             else:
-                playerDied(other=False)
+                game.playerDied(other=False)
             return
 
         if self.reloadstate > FPS * settings['Player.reload'].val * settings['Player.minreload'].val:
@@ -155,7 +153,7 @@ class Player:
         self.pos.y += self.speed.y
 
         if separation < (gravitywellrect.width / 2) + (self.spr.rect.width / 2):  # GW assumed to be spherical
-            playerDied(other=False)
+            game.playerDied(other=False)
             return
 
         if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width:
@@ -167,12 +165,62 @@ class Player:
         elif self.pos.y > SCREENSIZE[1] - settings['Player.visiblepx'].val:
             self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height
 
-        if pygame.sprite.collide_mask(players[0].spr, players[1].spr) is not None:
+        if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
-            playerDied(both=True)
+            game.playerDied(both=True)
 
         radiative_power = settings['GW.radiation'].val / (separation * separation) * 1000
         self.batterylevel = min(settings['Player.battSize'].val, self.batterylevel + radiative_power)
+
+
+class Game:
+    def __init__(self, singleplayer):
+        self.singleplayer = singleplayer
+        self.score = 0
+        self.roundscore = 0
+        self.players = [
+            Player(1),
+            Player(2),
+        ]
+
+        if singleplayer:
+            self.state = STATE_PLAYERING
+        else:
+            self.state = STATE_INITIAL
+
+        self.newRound()
+
+    def playerDied(self, other=False, both=False, sendpacket=True):
+        # other: did the other player die or did we die?
+        global statusmessage
+
+        self.state = STATE_DEAD
+
+        if both:
+            self.roundscore = 1
+            statusmessage = 'You tied: 1 point! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
+            if not game.singleplayer and sendpacket:
+                sendtoQueued(b'\x01\x01')
+        else:
+            if other:
+                self.roundscore = 5
+                statusmessage = 'You won: 5 points! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
+            else:
+                self.roundscore = 0
+                statusmessage = 'You died. Your score: ' + str(self.score) + '. Press Enter to restart.'
+                if not game.singleplayer and sendpacket:
+                    sendtoQueued(b'\x01')
+
+    def newRound(self):
+        if self.roundscore > 0:
+            self.score += self.roundscore
+
+        self.sparks = []
+        self.bullets = pygame.sprite.Group()
+        self.remotebullets = []
+        self.roundscore = 0
+        self.players[0].reinitialize()
+        self.players[1].reinitialize()
 
 
 def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
@@ -184,27 +232,6 @@ def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
     dir_x = separation_x / separation
     dir_y = separation_y / separation
     return grav_accel / obj1mass * dir_x, grav_accel / obj1mass * dir_y, separation
-
-
-def playerDied(other=False, both=False, sendpacket=True):
-    # other: did the other player die or did we die?
-    global statusmessage, state, gamescore
-
-    state = STATE_DEAD
-
-    if both:
-        gamescore = 1
-        statusmessage = 'You tied: 1 point! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
-        if not SINGLEPLAYER and sendpacket:
-            sendtoQueued(b'\x01\x01')
-    else:
-        if other:
-            gamescore = 5
-            statusmessage = 'You won: 5 points! Your score: ' + str(score + gamescore) + '. Press Enter to restart.'
-        else:
-            statusmessage = 'You died. Your score: ' + str(score) + '. Press Enter to restart.'
-            if not SINGLEPLAYER and sendpacket:
-                sendtoQueued(b'\x01')
 
 
 def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
@@ -221,7 +248,7 @@ def blitRotateCenter(surf, image, pos, angle):
 def stopgame(reason, exitstatus=0):
     global stopSendtoThread
 
-    if not SINGLEPLAYER:
+    if not game.singleplayer:
         stopSendtoThread = True
         msgQueueEvent.set()
         sock.sendto(mplib.playerquits + reason.encode('ASCII'), SERVER)
@@ -230,23 +257,12 @@ def stopgame(reason, exitstatus=0):
 
 
 def initSinglePlayer():
-    players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
-    players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-    players[0].draw(screen)  # updates the sprite position to avoid a collision
-    players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
-    players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
-    globalReinitialize()
-
-
-def globalReinitialize():
-    global sparks, bullets, remotebullets, gamescore
-
-    sparks = []
-    bullets = pygame.sprite.Group()
-    remotebullets = []
-    players[0].reinitialize()
-    players[1].reinitialize()
-    gamescore = 0
+    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+    game.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+    game.players[0].draw(screen)  # updates the sprite position to avoid a collision
+    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+    game.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+    game.newRound()
 
 
 def sendto():
@@ -272,20 +288,6 @@ def sendtoQueued(msg):
     msgQueueEvent.set()
 
 
-starttime = time.time()
-def timeme(out=True, th=0):  # params: show output; threshold above which it should be shown
-    global starttime
-    now = time.time()
-    cf = currentframe()
-    ln = cf.f_back.f_lineno  # line number of the parent stack frame
-    if out:
-        td = (now - starttime) * 1000000
-        if th < td:
-            print(ln, td, 'µs')
-    starttime = now
-
-
-GAMEVERSION = 1
 GRAVITYCONSTANT = 6.6742e-11
 SCREENSIZE = (1440, 900)
 FPS = 60
@@ -296,7 +298,6 @@ PINGEVERY = 4  # measure ping time randomly every PINGEVERY/2--PINGEVERY*2 secon
 SHOWBULLETGUIDE = True
 SIMPLEGRAPHICS = True
 SERVER = ('lucgommans.nl', 9473)
-SINGLEPLAYER = False
 
 STATE_INITIAL   = 0
 STATE_HELLOSENT = 1
@@ -304,14 +305,6 @@ STATE_TOKENSENT = 2
 STATE_MATCHED   = 3
 STATE_PLAYERING = 4
 STATE_DEAD      = 5
-
-score = 0
-
-if not SINGLEPLAYER:
-    state = STATE_INITIAL
-else:
-    state = STATE_PLAYERING
-    statusmessage = ''
 
 # don't just pygame.init() because it will hang and not quit when you do pygame.quit();sys.exit();. Stackoverflow suggests in 2013 this was a Wheezy bug, but it works on a
 # newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is also literally 20 times faster (0.02 instead of 0.4 s)!
@@ -325,15 +318,7 @@ screen = pygame.display.set_mode(SCREENSIZE)
 # else sock.sendto() will do dns lookup for every call and, depending on the setup, that might hit the network for sending each individual update packet
 SERVER = (socket.gethostbyname(SERVER[0]), SERVER[1])
 
-sparks = []
-bullets = pygame.sprite.Group()
-remotebullets = []
-players = [
-    Player(1),
-    Player(2),
-]
-hitsdealt = 0
-
+# TODO probably wouldn't be bad if this were a class, too
 gravitywell = pygame.image.load(f'res/sun.png')
 gravitywell = gravitywell.convert_alpha()
 gravitywellrect = gravitywell.get_rect()
@@ -342,7 +327,10 @@ gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
 gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
 gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 
-if SINGLEPLAYER:
+game = Game(singleplayer=False)
+
+if game.singleplayer:
+    statusmessage = ''
     initSinglePlayer()
 else:
     sock = None
@@ -352,13 +340,13 @@ else:
     threading.Thread(target=sendto).start()
 
 while True:
-    if not SINGLEPLAYER:
-        if state == STATE_INITIAL:
+    if not game.singleplayer:
+        if game.state == STATE_INITIAL:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setblocking(0)
-            sendtoQueued(mplib.clienthello)
+            sock.sendto(mplib.clienthello, SERVER)  # using sendtoQueued() here makes recvfrom() give an error on Windows
             mptoken = None
-            state = STATE_HELLOSENT
+            game.state = STATE_HELLOSENT
             statusmessage = 'Waiting for server initial response...'
 
         for _ in range(15):  # process up to N packets per frame (send rate is 1.x per frame)
@@ -368,94 +356,94 @@ while True:
                 msg = b''
             if msg == b'':
                 break  # no multiplayer updates
-            elif state == STATE_HELLOSENT:
+            elif game.state == STATE_HELLOSENT:
                 if msg[0 : len(mplib.serverhello)] != mplib.serverhello:
                     statusmessage = 'Server protocol error, please restart the game.'
                 else:
                     mptoken = msg[len(mplib.serverhello) : ]
                     sendtoQueued(mptoken)
-                    state = STATE_TOKENSENT
+                    game.state = STATE_TOKENSENT
                     statusmessage = 'Completing server handshake...'
 
-                    globalReinitialize()
+                    game.newRound()
 
                     pingSentAt = None
                     nextPingAt = random.randint(FPS * 3, FPS * 4)  # seqno
-                    players[0].seqno += 1
+                    game.players[0].seqno += 1
 
 
-            elif state == STATE_TOKENSENT:
+            elif game.state == STATE_TOKENSENT:
                 if msg == mplib.urplayerone:
                     statusmessage = 'Server connection established. Waiting for another player to join this server...'
-                    players[0].n = 1
-                    players[1].n = 2
+                    game.players[0].n = 1
+                    game.players[1].n = 2
                 elif msg == mplib.playerfound:
-                    state = STATE_MATCHED
+                    game.state = STATE_MATCHED
                     reply = Setting.serializeSettings(settings)
                     sock.sendto(reply, SERVER)
                     sock.sendto(reply, ('127.0.0.1', sock.getsockname()[1]))  # also send it to ourselves
                 elif msg == mplib.urplayertwo:
                     statusmessage = 'Server found a match! Waiting for the other player to send game data...'
-                    players[0].n = 2
-                    players[1].n = 1
-                    state = STATE_MATCHED
+                    game.players[0].n = 2
+                    game.players[1].n = 1
+                    game.state = STATE_MATCHED
                 else:
                     statusmessage = 'Server protocol error, please restart the game.'
                     print('Got from server:', msg)
 
-            elif state == STATE_MATCHED:
+            elif game.state == STATE_MATCHED:
                 Setting.updateSettings(settings, msg)
 
-                players[players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
-                players[players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-                players[players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
-                players[players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
-                players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
-                state = STATE_PLAYERING
+                game.players[game.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+                game.players[game.players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+                game.players[game.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+                game.players[game.players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+                game.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
+                game.state = STATE_PLAYERING
                 statusmessage = ''
 
-            elif state == STATE_PLAYERING or state == STATE_DEAD:
+            elif game.state in (STATE_PLAYERING, STATE_DEAD):
                 if msg.startswith(mplib.playerquits):
                     print('other player sent:', msg)
                     reason = msg[len(mplib.playerquits) : ]
                     if reason == mplib.restartpl0x:
                         statusmessage += ' The other player restarted!'
                     else:
-                        if state == STATE_PLAYERING:
+                        if game.state == STATE_PLAYERING:
                             statusmessage = 'You win with score ' + str(score) + '! The other player ' + str(reason, 'ASCII')
                         else:
                             statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(score)
                 elif msg[0] == 0:
                     seqno, x, y, xspeed, yspeed, angle, batlvl, health, hitsfromtheirbullets = mplib.updatestruct.unpack(msg[1 : 1 + mplib.updatestruct.size])
-                    if seqno <= players[1].seqno:
-                        print('Ignored seqno', seqno, ' because the last seqno for this player was', players[1].seqno)
+                    if seqno <= game.players[1].seqno:
+                        print('Ignored seqno', seqno, ' because the last seqno for this player was', game.players[1].seqno)
                     else:
-                        if seqno - 1 != players[1].seqno:
-                            print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', players[1].seqno)
-                        players[1].seqno = seqno
-                        players[1].angle = angle * 1.5
-                        players[1].pos = pygame.math.Vector2(x, y)
-                        players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
-                        players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
-                        players[1].health = health / 255
+                        if seqno - 1 != game.players[1].seqno:
+                            print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', game.players[1].seqno)
+                        game.players[1].seqno = seqno
+                        game.players[1].angle = angle * 1.5
+                        game.players[1].pos = pygame.math.Vector2(x, y)
+                        game.players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
+                        game.players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
+                        game.players[1].health = health / 255
 
                         if hitsfromtheirbullets > 0:
-                            players[0].health = max(0, players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
+                            game.players[0].health = max(0, game.players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
                             for _ in range(hitsfromtheirbullets):
-                                sparks.append(Spark(players[0].pos))
+                                game.sparks.append(Spark(game.players[0].pos))
 
                         msg = msg[1 + mplib.updatestruct.size : ]
-                        remotebullets = []
+                        game.remotebullets = []
                         while len(msg) > 0:
                             x, y = mplib.bulletstruct.unpack(msg[ : mplib.bulletstruct.size])
-                            remotebullets.append((x, y))
+                            game.remotebullets.append((x, y))
                             msg = msg[mplib.bulletstruct.size : ]
 
                 elif msg[0] == 1:
                     if len(msg) > 1 and msg[1] == 1:
-                        playerDied(both=True, sendpacket=False)
+                        game.playerDied(both=True, sendpacket=False)
                     else:
-                        playerDied(other=True)
+                        game.playerDied(other=True)
 
                 elif msg[0] == 2:
                     sendtoQueued(b'\x03')
@@ -477,59 +465,58 @@ while True:
 
     screen.fill((0, 0, 0))
 
-    if state == STATE_PLAYERING:
-        players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
+    if game.state == STATE_PLAYERING:
+        game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
 
         if keystates[pygame.K_SPACE]:
-            if players[0].reloadstate <= 0 and players[0].batterylevel > settings['Player.kJ/shot'].val:
-                players[0].reloadstate += FPS * settings['Player.reload'].val
-                players[0].batterylevel -= settings['Player.kJ/shot'].val
-                bull = Bullet(players[0])
-                bullets.add(bull)
+            if game.players[0].reloadstate <= 0 and game.players[0].batterylevel > settings['Player.kJ/shot'].val:
+                game.players[0].reloadstate += FPS * settings['Player.reload'].val
+                game.players[0].batterylevel -= settings['Player.kJ/shot'].val
+                game.bullets.add(Bullet(game.players[0]))
 
         if keystates[pygame.K_UP]:
-            players[0].thrust()
+            game.players[0].thrust()
 
         removebullets = []
-        for bullet in bullets:
-            if bullet.belongsTo == players[0].n:
+        for bullet in game.bullets:
+            if bullet.belongsTo == game.players[0].n:
                 died = bullet.advance()
                 if died:
                     removebullets.append(bullet)
         for bullet in removebullets:
-            if bullet.belongsTo == players[0].n:
-                bullets.remove(bullet)
-        for player in players:
-            removebullets = pygame.sprite.spritecollide(player.spr, bullets, False, pygame.sprite.collide_circle)
+            if bullet.belongsTo == game.players[0].n:
+                game.bullets.remove(bullet)
+        for player in game.players:
+            removebullets = pygame.sprite.spritecollide(player.spr, game.bullets, False, pygame.sprite.collide_circle)
             for bullet in removebullets:
-                if bullet.belongsTo == players[0].n:
-                    sparks.append(Spark(bullet.pos))
-                    bullets.remove(bullet)
-                    if player == players[1]:  # but did we hit the other player or ourselves?
-                        if SINGLEPLAYER:
-                            players[1].health = max(0, players[1].health - settings['Bullet.damage'].val)
+                if bullet.belongsTo == game.players[0].n:
+                    game.sparks.append(Spark(bullet.pos))
+                    game.bullets.remove(bullet)
+                    if player == game.players[1]:  # but did we hit the other player or ourselves?
+                        if game.singleplayer:
+                            game.players[1].health = max(0, game.players[1].health - settings['Bullet.damage'].val)
                         else:
-                            hitsdealt += 1
+                            game.players[0].hitsdealt += 1
                     else:
-                        players[0].health = max(0, players[0].health - settings['Bullet.damage'].val)
+                        game.players[0].health = max(0, game.players[0].health - settings['Bullet.damage'].val)
 
         removesparks = []
-        for spark in sparks:
+        for spark in game.sparks:
             died = spark.updateAndDraw(screen)
             if died:
                 removesparks.append(spark)
         for spark in removesparks:
-            sparks.remove(spark)
+            game.sparks.remove(spark)
 
-        bullets.draw(screen)
-        for bulletpos in remotebullets:
+        game.bullets.draw(screen)
+        for bulletpos in game.remotebullets:
             pygame.draw.circle(screen, Bullet.COLOR, bulletpos, settings['Bullet.size'].val)
 
-        players[0].update()
-        if SINGLEPLAYER:
-            players[1].update()
+        game.players[0].update()
+        if game.singleplayer:
+            game.players[1].update()
 
-        for player in players:
+        for player in game.players:
             player.draw(screen)
 
             w, h = player.spr.rect.width, player.spr.rect.height
@@ -563,7 +550,7 @@ while True:
             pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * Player.INDICATORHEIGHT + 0)))
 
         if SHOWBULLETGUIDE:
-            b = Bullet(players[0], virtual=True)
+            b = Bullet(game.players[0], virtual=True)
             for i in range(PREDICTIONDISTANCE):
                 oldpos = pygame.math.Vector2(b.pos)
                 died = b.advance()
@@ -572,22 +559,22 @@ while True:
                 pygame.draw.line(screen, (80, 0, 0), oldpos, b.pos)
 
 
-        if not SINGLEPLAYER:
+        if not game.singleplayer:
             msg = b'\x00' + mplib.updatestruct.pack(
-                players[0].seqno,
-                roundi(min(SCREENSIZE[0] + 1000, max(-1000, players[0].pos.x))),
-                roundi(min(SCREENSIZE[1] + 1000, max(-1000, players[0].pos.y))),
-                roundi(min(1000, max(-1000, players[0].speed.x * 100))),
-                roundi(min(1000, max(-1000, players[0].speed.y * 100))),
-                roundi(players[0].angle / 1.5),
-                roundi(players[0].batterylevel / settings['Player.battSize'].val * 255),
-                roundi(players[0].health * 255),
-                hitsdealt,
+                game.players[0].seqno,
+                roundi(min(SCREENSIZE[0] + 1000, max(-1000, game.players[0].pos.x))),
+                roundi(min(SCREENSIZE[1] + 1000, max(-1000, game.players[0].pos.y))),
+                roundi(min(1000, max(-1000, game.players[0].speed.x * 100))),
+                roundi(min(1000, max(-1000, game.players[0].speed.y * 100))),
+                roundi(game.players[0].angle / 1.5),
+                roundi(game.players[0].batterylevel / settings['Player.battSize'].val * 255),
+                roundi(game.players[0].health * 255),
+                game.players[0].hitsdealt,
             )
-            for bullet in bullets:
+            for bullet in game.bullets:
                 msg += mplib.bulletstruct.pack(roundi(bullet.pos.x), roundi(bullet.pos.y))
-            players[0].seqno += 1
-            hitsdealt = 0
+            game.players[0].seqno += 1
+            game.players[0].hitsdealt = 0
             sendtoQueued(msg)
 
             nextPingAt -= 1
@@ -595,16 +582,15 @@ while True:
                 sendtoQueued(b'\x02')
                 pingSentAt = time.time()
                 nextPingAt = random.randint(FPS * (PINGEVERY / 2), FPS * (PINGEVERY * 2))
-    elif state == STATE_DEAD:
+    elif game.state == STATE_DEAD:
         if keystates[pygame.K_RETURN]:
-            score += gamescore
-            if SINGLEPLAYER:
-                state = STATE_PLAYERING
+            if game.singleplayer:
+                game.state = STATE_PLAYERING
                 initSinglePlayer()
                 statusmessage = ''
             else:
                 sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
-                state = STATE_INITIAL
+                game.state = STATE_INITIAL
 
     if SIMPLEGRAPHICS:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
         pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
