@@ -65,7 +65,7 @@ prefs = {
     # Use simpler, faster graphics (currently does not make a big difference)
     'Game.simple_graphics': False,
     # The base image that goes behind everything else, set to None for, well, none
-    'Game.backgroundimage': 'res/stackoverflow-frisa-theme-renderedbackground.png',
+    'Game.backgroundimage': None,
 
     # Show a prediction line for bullets
     'Game.show_aim_guide':  True,
@@ -92,57 +92,61 @@ prefs = {
     'Spark.graphic':  'res/venting.png',
 
     # Amount of red, green, and blue as a value from 0-255
-    'Bullet.color':   (0, 0, 0),
+    'Bullet.color':   (240, 120, 0),
 }
 
-# These settings are applied in single player and when you are the first player to arrive in a multiplayer game
+# These settings are synchronised with the other player when you are the first player to arrive in a multiplayer game, or when you play singleplayer
 settings = {
     # How much damage a single hit incurs
-    'Bullet.damage':   Setting(  0.1, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Bullet.damage':   Setting(   0.1, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
-    'Bullet.mass':     Setting(  0.5, 'B', lambda n: int(round(n * 255)), lambda n: n / 255), 
+    'Bullet.mass':     Setting(   0.5, 'B', lambda n: int(round(n * 255)), lambda n: n / 255), 
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
-    'Bullet.speed':    Setting(  5,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
+    'Bullet.speed':    Setting(   5,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
-    'Bullet.relspeed': Setting(False, 'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
+    'Bullet.relspeed': Setting(False,  'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
-    'Bullet.size':     Setting(  2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
+    'Bullet.size':     Setting(   2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
 
     # Size of the player as a fraction of the image in the resources folder
-    'Player.scale':    Setting(  0.2, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.scale':    Setting(   0.2, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
     # How much of the player sprite should still be visible before it wraps when hitting the screen's edge (pixels)
-    'Player.visiblepx':Setting(  1,   'b'),
+    'Player.visiblepx':Setting(   1,   'b'),
     # Start x and y, and initial speed, of player 1
-    'Player1.x':       Setting(300,   'h'),
-    'Player1.y':       Setting(300,   'h'),
-    'Player1.xspeed':  Setting( -0.5, 'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player1.yspeed':  Setting(  0.5, 'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.x':       Setting(-300,  'h'),
+    'Player1.y':       Setting(   0,   'h'),
+    'Player1.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.yspeed':  Setting(   1,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Start x and y, and initial speed, of player 2
-    'Player2.x':       Setting(900,   'h'),
-    'Player2.y':       Setting(700,   'h'),
-    'Player2.xspeed':  Setting(  0.5, 'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player2.yspeed':  Setting( -0.5, 'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.x':       Setting( 300,   'h'),
+    'Player2.y':       Setting(   0,   'h'),
+    'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.yspeed':  Setting(  -1,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Size of the players' batteries (kilojoules)
-    'Player.battSize': Setting(110,   'B'),
+    'Player.battSize': Setting( 110,   'B'),
     # Strength of the players' engine (Newtons)
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds so we need some oomph in here
-    'Player.thrust':   Setting(300,   'H'),
+    'Player.thrust':   Setting( 300,   'H'),
     # How many Newtons do we get out of a kJ from the battery?
-    'Player.thrust/kJ':Setting(800,   'H'),
+    'Player.thrust/kJ':Setting( 800,   'H'),
     # How many degrees of rotation do we get out of a kJ from the battery?
-    'Player.rot/kJ':   Setting( 80,   'H'),
+    'Player.rot/kJ':   Setting(  80,   'H'),
     # How many kJ does a single shot take?
-    'Player.kJ/shot':  Setting( 12,   'B'),
+    'Player.kJ/shot':  Setting(  12,   'B'),
     # Weight of the spacecraft (kilograms)
-    'Player.mass':     Setting(100,   'B'),
+    'Player.mass':     Setting( 100,   'B'),
     # Time required to reload the craft (seconds)
-    'Player.reload':   Setting(  0.4, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.reload':   Setting(   0.4, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
     # How much can the craft prepare a next shot to shoot faster bursts? Value multiplied with Player.reload, so -0.5 with Player.reload of 0.1 will be 'negative' 0.05 seconds reload state
-    'Player.minreload':Setting(  0.0, 'b', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.minreload':Setting(   0.0, 'b', lambda n: int(round(n * 100)), lambda n: n / 100),
 
-    # Weight of the star (kilograms)
+    # The Gravity Well (GW) is the heavy object in the middle. Here you can configure whether it appears as a star (such as the Sun) or a planet or so.
+    'GW.imagenumber':  Setting(   3,   'B'),
+    # Weight of the GW (kilograms)
     'GW.mass':         Setting(4e14,  'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
-    'GW.radiation':    Setting( 10,   'B'),
+    'GW.radiation':    Setting(  10,   'B'),
+    # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
+    'GW.radius':       Setting(  50,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
 }
 

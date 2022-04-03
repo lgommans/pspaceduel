@@ -25,7 +25,7 @@ class Spark:
         self.angle += self.rotation
 
         rotated_image = pygame.transform.rotate(Spark.IMAGE, self.angle)
-        screen.blit(rotated_image, (roundi(self.pos.x), roundi(self.pos.y)))
+        screen.blit(rotated_image, coordsToPx(roundi(self.pos.x), roundi(self.pos.y)))
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -57,7 +57,7 @@ class Bullet(pygame.sprite.Sprite):
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
 
-        accelx, accely, separation = gravity(self.pos, gravitywell_center, settings['Bullet.mass'].val, settings['GW.mass'].val)
+        accelx, accely, separation = gravity(self.pos, ZEROVECTOR, settings['Bullet.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x
@@ -65,11 +65,11 @@ class Bullet(pygame.sprite.Sprite):
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        if game.players[0].n == self.belongsTo and separation < gravitywellrect.width / 2:  # GW assumed to be spherical
+        if game.players[0].n == self.belongsTo and separation < settings['GW.radius'].val:  # GW assumed to be spherical
             return True
 
-        if self.pos.x < -SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN or self.pos.x > SCREENSIZE[0] + (SCREENSIZE[0] * Bullet.MAX_OUT_OF_SCREEN) \
-        or self.pos.y < -SCREENSIZE[1] * Bullet.MAX_OUT_OF_SCREEN or self.pos.y > SCREENSIZE[1] + (SCREENSIZE[1] * Bullet.MAX_OUT_OF_SCREEN):
+        if self.pos.x < -(SCREENSIZE[0] / 2) - ((SCREENSIZE[0] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.x > (SCREENSIZE[0] / 2) + (SCREENSIZE[0] / 2 * Bullet.MAX_OUT_OF_SCREEN) \
+        or self.pos.y < -(SCREENSIZE[1] / 2) - ((SCREENSIZE[1] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.y > (SCREENSIZE[1] / 2) + (SCREENSIZE[1] / 2 * Bullet.MAX_OUT_OF_SCREEN):
             return True
 
         return False
@@ -109,7 +109,7 @@ class Player:
         self.spr.rect.left = roundi(self.pos.x)
         self.spr.rect.top = roundi(self.pos.y)
 
-        blitRotateCenter(screen, self.img, (roundi(self.spr.rect.left), roundi(self.spr.rect.top)), self.angle)
+        blitRotateCenter(screen, self.img, coordsToPx(roundi(self.spr.rect.left), roundi(self.spr.rect.top)), self.angle)
 
     def rotate(self, direction, fine=False):  # direction is 1 or -1
         if direction == 0:
@@ -123,7 +123,7 @@ class Player:
             rotated_image = pygame.transform.rotate(self.img, self.angle)
             self.spr.mask = pygame.mask.from_surface(rotated_image)
 
-    def update(self):  # this function should only be run on the local player, since it calls playerDied which triggers network events
+    def update(self):  # this function should only be run on the local player while in multiplayer mode, since it calls playerDied which triggers network events
         if self.health <= 0:
             if game.singleplayer and self == game.players[1]:
                 game.playerDied(other=True)
@@ -135,24 +135,28 @@ class Player:
             self.reloadstate -= 1
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), gravitywell_center, settings['Player.mass'].val, settings['GW.mass'].val)
+        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), ZEROVECTOR, settings['Player.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x
         self.pos.y += self.speed.y
 
-        if separation < (gravitywellrect.width / 2) + (self.spr.rect.width / 2):  # GW assumed to be spherical
-            game.playerDied(other=False)
+        if separation < (settings['GW.radius'].val) + (self.spr.rect.width / 2):  # GW assumed to be spherical
+            if game.singleplayer and self == game.players[1]:
+                game.playerDied(other=True)
+            else:
+                game.playerDied(other=False)
             return
 
-        if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width:
-            self.pos.x = SCREENSIZE[0] - settings['Player.visiblepx'].val
-        elif self.pos.x > SCREENSIZE[0] - settings['Player.visiblepx'].val:
-            self.pos.x = settings['Player.visiblepx'].val - self.spr.rect.width
-        if self.pos.y < settings['Player.visiblepx'].val - self.spr.rect.height:
-            self.pos.y = SCREENSIZE[1] - settings['Player.visiblepx'].val
-        elif self.pos.y > SCREENSIZE[1] - settings['Player.visiblepx'].val:
-            self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height
+        if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2):
+            self.pos.x = (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val
+        elif self.pos.x > (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val:
+            self.pos.x = settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2)
+
+        if self.pos.y < settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2):
+            self.pos.y = (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val
+        elif self.pos.y > (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val:
+            self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2)
 
         if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
@@ -295,9 +299,12 @@ class Game:
 
             Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
 
-            self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+            gravitywell.setImage(settings['GW.imagenumber'].val)
+            halfpw = self.players[0].spr.rect.width / 2
+            halfph = self.players[0].spr.rect.height / 2
+            self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val - halfpw, settings['Player1.y'].val - halfph)
             self.players[self.players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-            self.players[self.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+            self.players[self.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val - halfpw, settings['Player2.y'].val - halfph)
             self.players[self.players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
             self.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
             self.state = STATE_PLAYERING
@@ -400,6 +407,52 @@ class Game:
                 self.processIncomingPacket(msg)
 
 
+class GravityWell:
+    def __init__(self):
+        self.image = None
+
+    def setImage(self, imagenumber):
+        if prefs['Game.simple_graphics']:
+            return
+
+        try:
+            if imagenumber == 1:
+                self.image = pygame.image.load('res/yellow-sphere.png').convert_alpha()
+                self.frames = None
+            elif imagenumber == 2:
+                self.image = pygame.image.load('res/sun.png').convert_alpha()
+                self.frames = None
+            elif imagenumber == 3:
+                self.frames = loadGIF('res/earth-scaled-fixedforPIL.gif')
+                self.image = self.frames[0]
+            else:
+                print('Note: GravityWell image number', imagenumber, 'was requested but we do not have it.')
+
+            self.framecounter = 0  # in case it needs resetting
+            GWwidth = roundi(settings['GW.radius'].val * 2)
+            if self.image.get_rect().width != GWwidth:
+                wh = (GWwidth, GWwidth)  # since it's spherical... width,height == width,width
+                if self.frames is not None:
+                    for i, frame in enumerate(self.frames):
+                        self.frames[i] = pygame.transform.scale(frame, wh)
+                else:
+                    self.image = pygame.transform.scale(self.image, wh)
+
+            if self.frames is not None:
+                self.image = self.frames[0]
+        except Exception as e:  # might fail if PIL is not installed and a GIF was requested. Not bad, just use the default...
+            print('Warning:', type(e).__name__, 'while loading GW image')
+            return
+
+    def animationStep(self):
+        if self.frames is None:
+            return
+
+        self.framecounter += 1
+        self.framecounter %= len(self.frames) * 8
+        self.image = self.frames[self.framecounter // 8]
+
+
 def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
     separation_x = obj1pos.x - obj2pos.x
     separation_y = obj1pos.y - obj2pos.y
@@ -439,19 +492,48 @@ def prepareHostAndPort(hostAndPort, defaultport=9473):
         hostOrIP, port = hostAndPort.split(':', 1)
         port = int(port)
 
-    ip = socket.gethostbyname(hostOrIP)
+    try:
+        ip = socket.gethostbyname(hostOrIP)
+    except Exception as e:
+        print('Error looking up server name to get an IP, might you not have Internet or might the DNS server be down?')
+        raise e
 
     return (ip, port)
 
 
 def initSinglePlayer():
-    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+    halfpw = game.players[0].spr.rect.width / 2
+    halfph = game.players[0].spr.rect.height / 2
+    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val - halfpw, settings['Player1.y'].val - halfph)
     game.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-    game.players[0].draw(screen)  # updates the sprite position to avoid a collision
-    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+    game.players[0].draw(screen)  # updates the sprite position to avoid a collision with player 2
+    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val - halfpw, settings['Player2.y'].val - halfph)
     game.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+    game.players[1].draw(screen)
     game.newRound()
     game.state = STATE_PLAYERING
+    gravitywell.setImage(settings['GW.imagenumber'].val)
+
+
+def loadGIF(filename):
+    global imported_PIL, Image, ImageSequence
+
+    if not imported_PIL:
+        from PIL import Image, ImageSequence
+        imported_PIL = True
+
+    # Function ©Rabbid76, <https://stackoverflow.com/a/64668964/1201863>, CC BY-SA
+    img = Image.open(filename)
+    frames = []
+    for frame in ImageSequence.Iterator(img):
+        frame = frame.convert('RGBA')
+        pygameImage = pygame.image.fromstring(frame.tobytes(), frame.size, frame.mode).convert_alpha()
+        frames.append(pygameImage)
+    return frames
+
+
+def coordsToPx(x, y):
+    return (x + (SCREENSIZE[0] // 2), y + (SCREENSIZE[1] // 2))
 
 
 def parseArgs(argv):
@@ -492,6 +574,7 @@ FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 PREDICTIONDISTANCE = FPS * 2
+ZEROVECTOR = pygame.math.Vector2(0, 0)
 
 STATE_INITIAL   = 0
 STATE_HELLOSENT = 1
@@ -509,16 +592,8 @@ pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 fpslimiter = pygame.time.Clock()
 screen = pygame.display.set_mode(SCREENSIZE)
+imported_PIL = False
 statusmessage = ''
-
-# TODO probably wouldn't be bad if this were a class, too
-gravitywell = pygame.image.load(f'res/sun.png')
-gravitywell = gravitywell.convert_alpha()
-gravitywellrect = gravitywell.get_rect()
-gravitywellrect.left = roundi((SCREENSIZE[0] / 2) - (gravitywellrect.width / 2))
-gravitywellrect.top = roundi((SCREENSIZE[1] / 2) - (gravitywellrect.height / 2))
-gravitywell_center = pygame.math.Vector2(SCREENSIZE[0] / 2, SCREENSIZE[1] / 2)
-gravitywell_center_int = (roundi(gravitywell_center.x), roundi(gravitywell_center.y))  # because pygame doesn't want a normal Vector2 as position to draw a circle on...
 
 if not args['singleplayer']:
     # if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
@@ -534,6 +609,7 @@ if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not No
     bgimg = pygame.image.load(prefs['Game.backgroundimage']).convert_alpha()
 
 game = Game(singleplayer=args['singleplayer'])
+gravitywell = GravityWell()
 
 if game.singleplayer:
     initSinglePlayer()
@@ -556,6 +632,12 @@ while True:
         screen.fill((0, 0, 0))
     else:
         screen.blit(bgimg, (0, 0))
+
+    if prefs['Game.simple_graphics'] or gravitywell.image is None:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
+        pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), 50)
+    else:
+        screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val, -settings['GW.radius'].val))
+        gravitywell.animationStep()
 
     if game.state == STATE_PLAYERING:
         game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
@@ -600,9 +682,8 @@ while True:
         for spark in removesparks:
             game.sparks.remove(spark)
 
-        game.bullets.draw(screen)
-        for bulletpos in game.remotebullets:
-            pygame.draw.circle(screen, prefs['Bullet.color'], bulletpos, settings['Bullet.size'].val)
+        for bulletpos in game.remotebullets + [bullet.rect.center for bullet in game.bullets]:
+            pygame.draw.circle(screen, prefs['Bullet.color'], coordsToPx(*bulletpos), settings['Bullet.size'].val)
 
         game.players[0].update()
         if game.singleplayer:
@@ -625,21 +706,22 @@ while True:
             else:
                 indicatorcolor = poweryellow
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y + h + idis + 1), roundi((w * 2 + 2)), roundi(h * prefs['Player.indicator_height'] + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y + h + idis + 1)), roundi((w * 2 + 2)), roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0)), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0)), roundi(h * prefs['Player.indicator_height'] + 0)))
             # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (roundi(x - w - 0), roundi(player.pos.y + h + idis + 2), roundi((w * 2 + 0) * bl), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0) * bl), roundi(h * prefs['Player.indicator_height'] + 0)))
 
             # Draw health indicators
+            # TODO make preference
             healthgreen = (10, 230, 10)
             indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else (255, 100, 0)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (roundi(x - w - 1), roundi(player.pos.y - idis - 2), roundi((w * 2 + 2)),                 roundi(h * prefs['Player.indicator_height'] + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y - idis - 2)), roundi((w * 2 + 2)),                 roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, (  0,   0,  0), (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen   , (roundi(x - w - 0), roundi(player.pos.y - idis - 1), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, healthgreen   , (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
@@ -648,7 +730,7 @@ while True:
                 died = b.advance()
                 if died:
                     break
-                pygame.draw.line(screen, prefs['Game.aim_guide_color'], oldpos, b.pos)
+                pygame.draw.line(screen, prefs['Game.aim_guide_color'], coordsToPx(*oldpos), coordsToPx(*b.pos))
 
 
         game.sendUpdatePacket()
@@ -660,11 +742,6 @@ while True:
             else:
                 game.sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
                 game.connect(SERVER)
-
-    if prefs['Game.simple_graphics']:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
-        pygame.draw.circle(screen, (255, 255, 0), gravitywell_center_int, 50)
-    else:
-        screen.blit(gravitywell, gravitywellrect)
 
     if len(statusmessage) > 0:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]

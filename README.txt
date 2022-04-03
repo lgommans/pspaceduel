@@ -45,7 +45,8 @@ And general changes:
 
 - Bullets do not wrap like players.
   I'd like the players to also not wrap for realism, but it increases the
-  difficulty significantly since solar panels barely work away from the star.
+  difficulty significantly: since solar panels barely work away from the star,
+  one quite easily drifts off into space uncontrollably on an escape trajectory.
  
 [1] https://apps.kde.org/kspaceduel/
 
@@ -57,17 +58,23 @@ And general changes:
 +-=-=-=-=-=-=-=-=-=-=-=-=-=-+
 
 Install python3 and pygame for your platform.
-
-You can run a dummy singleplayer game (you can control only one craft)
-by setting SINGLEPLAYER = True
+Optionally install Pillow for loading animated GIFs used in some themes:
+  `pip3 install pillow` or `apt install python3-pil`
 
 For multiplayer:
 
- - There might be a server running on lucgommans.nl:9473
+ - The game will, by default, try to connect to lucgommans.nl:9473
  - Else you can start a server using:  python3 server.py
-   The game requires only UDP port 9473 (by default)
+   The game uses UDP port 9473
 
-Run the client:  python3 client.py
+Run in multiplayer with the default server:
+
+  python3 client.py
+
+Optionally add a host:port to connec to an alternative server.
+Or run a dummy singleplayer game (you can control only one craft):
+
+  python3 client.py --singleplayer
 
 Controls:
 
