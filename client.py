@@ -569,11 +569,10 @@ For running a server, see `server.py`.
 
 
 GRAVITYCONSTANT = 6.6742e-11
-SCREENSIZE = (1440, 900)
+SCREENSIZE = (1900, 980)
 FPS = 60
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
-PREDICTIONDISTANCE = FPS * 2
 ZEROVECTOR = pygame.math.Vector2(0, 0)
 
 STATE_INITIAL   = 0
@@ -698,34 +697,35 @@ while True:
 
             # Draw battery level indicators
             bl = player.batterylevel / settings['Player.battSize'].val
-            poweryellow = (255, 200, 0)
+            bgcol = prefs['Player.indicator_energy_color_bg']
+            poweryellow = prefs['Player.indicator_energy_color_good']
             if player.batterylevel < settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
-                indicatorcolor = (255, 0, 0)
+                indicatorcolor = prefs['Player.indicator_energy_color_out']
             elif player.batterylevel < settings['Player.kJ/shot'].val:
-                indicatorcolor = (255, 128, 0)
+                indicatorcolor = prefs['Player.indicator_energy_color_low']
             else:
                 indicatorcolor = poweryellow
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y + h + idis + 1)), roundi((w * 2 + 2)), roundi(h * prefs['Player.indicator_height'] + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y + h + idis + 1)), roundi((w * 2 + 2)),      roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0)), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0)),      roundi(h * prefs['Player.indicator_height'] + 0)))
             # battery level (drawn over the black area)
             pygame.draw.rect(screen, poweryellow   , (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0) * bl), roundi(h * prefs['Player.indicator_height'] + 0)))
 
             # Draw health indicators
-            # TODO make preference
-            healthgreen = (10, 230, 10)
-            indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else (255, 100, 0)
+            healthgreen = prefs['Player.indicator_health_color_good']
+            indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else prefs['Player.indicator_health_color_low']
+            bgcol = prefs['Player.indicator_health_color_bg']
             # outer rectangle
             pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y - idis - 2)), roundi((w * 2 + 2)),                 roundi(h * prefs['Player.indicator_height'] + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, (  0,   0,  0), (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen   , (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
-            for i in range(PREDICTIONDISTANCE):
+            for i in range(prefs['Game.aim_guide_distance']):
                 oldpos = pygame.math.Vector2(b.pos)
                 died = b.advance()
                 if died:
@@ -745,8 +745,8 @@ while True:
 
     if len(statusmessage) > 0:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
-        surface = font_statusMsg.render(msgpart, True, (0, 30, 174))
-        screen.blit(surface, (10, 50))
+        surface = font_statusMsg.render(msgpart, True, prefs['Game.text_color'])
+        screen.blit(surface, prefs['Game.text_position'])
 
     pygame.display.flip()
     frametime = fpslimiter.tick(FPS)
