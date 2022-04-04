@@ -48,11 +48,7 @@ class Bullet(pygame.sprite.Sprite):
         self.radius = settings['Bullet.size'].val
         self.virtual = virtual
         if not virtual:
-            bulletsize = settings['Bullet.size'].val
-            self.image = pygame.surface.Surface((bulletsize * 2, bulletsize * 2), pygame.SRCALPHA)
-            self.rect = self.image.get_rect(center=self.pos)
-            pygame.draw.circle(self.image, prefs['Bullet.color'], (bulletsize, bulletsize), bulletsize)
-            self.image = self.image.convert_alpha()
+            self.rect = pygame.rect.Rect(0, 0, self.radius, self.radius)
 
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
@@ -232,6 +228,7 @@ class Game:
             if len(self.msgQueue) == 0:
                 # Doing this thread blocking/unblocking is ~13× faster than starting a new thread for every packet
                 self.msgQueueEvent.clear()
+                # TODO sometimes it hangs here when you hit escape...
                 self.msgQueueEvent.wait()
 
             if self.stopSendtoThread:
@@ -698,7 +695,9 @@ while True:
             w, h = player.spr.rect.width, player.spr.rect.height
             x, y = player.spr.rect.center
             idis = h * prefs['Player.indicator_distance']
+            iheight = roundi(h * prefs['Player.indicator_height'])
 
+            # Use int() for size calculations instead of roundi() because it'll do this "rounding towards the even choice" and you get it trying to draw on even coordinates of the screen (jumping around)
             # Draw battery level indicators
             bl = player.batterylevel / settings['Player.battSize'].val
             bgcol = prefs['Player.indicator_energy_color_bg']
@@ -710,22 +709,22 @@ while True:
             else:
                 indicatorcolor = poweryellow
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y + h + idis + 1)), roundi((w * 2 + 2)),      roundi(h * prefs['Player.indicator_height'] + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), int(player.pos.y + h + idis + 1)), int((w * 2 + 2)),      int(iheight + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0)),      roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), int(player.pos.y + h + idis + 2)), int((w * 2 + 0)),      int(iheight + 0)))
             # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y + h + idis + 2)), roundi((w * 2 + 0) * bl), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(roundi(x - w - 0), int(player.pos.y + h + idis + 2)), int((w * 2 + 0) * bl), int(iheight + 0)))
 
             # Draw health indicators
             healthgreen = prefs['Player.indicator_health_color_good']
             indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else prefs['Player.indicator_health_color_low']
             bgcol = prefs['Player.indicator_health_color_bg']
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), roundi(player.pos.y - idis - 2)), roundi((w * 2 + 2)),                 roundi(h * prefs['Player.indicator_height'] + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), int(player.pos.y - idis - 2)), int((w * 2 + 2)),                 int(iheight + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0)),                 roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), int(player.pos.y - idis - 1)), int((w * 2 + 0)),                 int(iheight + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(roundi(x - w - 0), roundi(player.pos.y - idis - 1)), roundi((w * 2 + 0) * player.health), roundi(h * prefs['Player.indicator_height'] + 0)))
+            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(roundi(x - w - 0), int(player.pos.y - idis - 1)), int((w * 2 + 0) * player.health), int(iheight + 0)))
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)

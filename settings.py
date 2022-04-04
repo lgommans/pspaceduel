@@ -90,9 +90,9 @@ prefs = {
     'Player.rotate_speed_fine': 1,
 
     # How big/tall should the health and energy indicators be, as a fraction of the player height after scaling?
-    'Player.indicator_height':   0.18,
+    'Player.indicator_height':   0.14,
     # How far away should these indicators be, as a fraction of the player height after scaling?
-    'Player.indicator_distance': 0.6,
+    'Player.indicator_distance': 0.5,
     # Colors of your health bar (green by default, orange if the next bullet would kill you)
     'Player.indicator_health_color_good': ( 10, 230,  10),
     'Player.indicator_health_color_low':  (255, 100,   0),
@@ -104,7 +104,7 @@ prefs = {
     'Player.indicator_energy_color_bg':   (  0,   0,   0),
 
     # Number of frames for which a spark will exist, randomly chosen within this interval
-    'Spark.lifespan': (4, 10),
+    'Spark.lifespan': (5, 11),
     # Number of pixels it randomly moves per frame in each direction, randomly chosen within this interval. The direction (positive or negative) is a 50/50 chance.
     'Spark.movement': (1, 2),
     # The degrees it rotates per frame, randomly chosen within this interval. The direction (positive or negative rotation) is a 50/50 chance.
@@ -134,9 +134,9 @@ settings = {
     'Bullet.size':     Setting(   2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
 
     # Size of the player as a fraction of the image in the resources folder
-    'Player.scale':    Setting(   0.25,'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.scale':    Setting(   0.07,'B', lambda n: int(round(n * 200)), lambda n: n / 200),
     # How much of the player sprite should still be visible before it wraps when hitting the screen's edge (pixels)
-    'Player.visiblepx':Setting(   1,   'b'),
+    'Player.visiblepx':Setting(   2,   'b'),
     # Start x and y, and initial speed, of player 1
     'Player1.x':       Setting(-300,   'h'),
     'Player1.y':       Setting(   0,   'h'),
