@@ -14,6 +14,7 @@
   Toggle settings are specified as «True» or «False».
   Numbers can have different valid ranges, but anything sensible should be supported.
   Coordinates are given in «(x, y)». Player positions are relative to the gravity well at the center of the screen, so «(-100, 0)» will appear just left of the center.
+  File names have to be between apostrophes or quotes: «"some_background_image.png"»
 
 '''
 
@@ -71,9 +72,9 @@ prefs = {
     # Use simpler, faster graphics (currently does not make a big difference)
     'Game.simple_graphics': False,
     # The base image that goes behind everything else. Set to None for, well, none
-    'Game.backgroundimage': None,
+    'Game.backgroundimage': 'res/Messier-101-test.jpg',
     # Color and position of the main text messages
-    'Game.text_color':      (0, 30, 174),
+    'Game.text_color':      (  0,  90, 224),
     'Game.text_position':   (10, 50),
 
     # Show a prediction line for bullets
@@ -96,7 +97,7 @@ prefs = {
     'Player.indicator_health_color_good': ( 10, 230,  10),
     'Player.indicator_health_color_low':  (255, 100,   0),
     'Player.indicator_health_color_bg':   (  0,   0,   0),
-    # Colors of your energy bar (yellow by default, orange if you can't shoot, red if you can't turn on your engine at all anymore)
+    # Colors of your energy bar (yellow by default, orange if you can't shoot, red if you can't meaningfully use your engine anymore)
     'Player.indicator_energy_color_good': (255, 200,   0),
     'Player.indicator_energy_color_low':  (255, 128,   0),
     'Player.indicator_energy_color_out':  (255,   0,   0),
@@ -112,12 +113,13 @@ prefs = {
     'Spark.graphic':  'res/venting.png',
 
     # The color of the spheres you shoot
-    'Bullet.color':   (240, 120, 0),
+    'Bullet.color':   (255, 180,  20),
 }
 
 ###
 # Game settings.
-# These are synchronised with the other player when you are the first player to arrive in a multiplayer game, or when you play singleplayer
+# These are synchronised with the other player when you are the first player to arrive in a multiplayer game, or when you play singleplayer.
+# If you change anything aside from the value, e.g. the 'B' or 'h' or 'lambda' field, your game will be incompatible with other players who did not make the exact same change!
 ###
 settings = {
     # How much damage a single hit incurs
@@ -132,7 +134,7 @@ settings = {
     'Bullet.size':     Setting(   2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
 
     # Size of the player as a fraction of the image in the resources folder
-    'Player.scale':    Setting(   0.2, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.scale':    Setting(   0.25,'B', lambda n: int(round(n * 100)), lambda n: n / 100),
     # How much of the player sprite should still be visible before it wraps when hitting the screen's edge (pixels)
     'Player.visiblepx':Setting(   1,   'b'),
     # Start x and y, and initial speed, of player 1
@@ -145,13 +147,13 @@ settings = {
     'Player2.y':       Setting(   0,   'h'),
     'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     'Player2.yspeed':  Setting(  -1,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    # Size of the players' batteries (kilojoules)
-    'Player.battSize': Setting( 110,   'B'),
+    # Battery capacity for each player (kilojoules)
+    'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)
-    # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds so we need some oomph in here
-    'Player.thrust':   Setting( 300,   'H'),
+    # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds instead of years so we need a bit more oomph here
+    'Player.thrust':   Setting( 200,   'H'),
     # How many Newtons do we get out of a kJ from the battery?
-    'Player.thrust/kJ':Setting( 800,   'H'),
+    'Player.thrust/kJ':Setting( 600,   'H'),
     # How many degrees of rotation do we get out of a kJ from the battery?
     'Player.rot/kJ':   Setting(  80,   'H'),
     # How many kJ does a single shot take?
@@ -164,12 +166,12 @@ settings = {
     'Player.minreload':Setting(   0.0, 'b', lambda n: int(round(n * 100)), lambda n: n / 100),
 
     # The Gravity Well (GW) is the heavy object in the middle. Here you can configure whether it appears as a star (such as the Sun) or a planet or so.
-    'GW.imagenumber':  Setting(   3,   'B'),
+    'GW.imagenumber':  Setting(   4,   'B'),
     # Weight of the GW (kilograms)
     'GW.mass':         Setting(4e14,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting(  10,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
-    'GW.radius':       Setting(  50,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
+    'GW.radius':       Setting(  60,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
 }
 

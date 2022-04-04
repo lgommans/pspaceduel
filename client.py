@@ -425,6 +425,9 @@ class GravityWell:
             elif imagenumber == 3:
                 self.frames = loadGIF('res/earth-scaled-fixedforPIL.gif')
                 self.image = self.frames[0]
+            elif imagenumber == 4:
+                self.image = pygame.image.load("res/that's-no-moon.png").convert_alpha()
+                self.frames = None
             else:
                 print('Note: GravityWell image number', imagenumber, 'was requested but we do not have it.')
 
@@ -571,6 +574,7 @@ For running a server, see `server.py`.
 GRAVITYCONSTANT = 6.6742e-11
 SCREENSIZE = (1900, 980)
 FPS = 60
+
 FRAMETIME = 1 / FPS
 FTGC = FRAMETIME * GRAVITYCONSTANT
 ZEROVECTOR = pygame.math.Vector2(0, 0)
@@ -605,7 +609,7 @@ if not args['singleplayer']:
 Spark.IMAGE = pygame.image.load(prefs['Spark.graphic']).convert_alpha()
 
 if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
-    bgimg = pygame.image.load(prefs['Game.backgroundimage']).convert_alpha()
+    bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
 
 game = Game(singleplayer=args['singleplayer'])
 gravitywell = GravityWell()
@@ -699,7 +703,7 @@ while True:
             bl = player.batterylevel / settings['Player.battSize'].val
             bgcol = prefs['Player.indicator_energy_color_bg']
             poweryellow = prefs['Player.indicator_energy_color_good']
-            if player.batterylevel < settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
+            if player.batterylevel < (settings['Player.thrust'].val / settings['Player.thrust/kJ'].val) * 2:
                 indicatorcolor = prefs['Player.indicator_energy_color_out']
             elif player.batterylevel < settings['Player.kJ/shot'].val:
                 indicatorcolor = prefs['Player.indicator_energy_color_low']
@@ -725,7 +729,7 @@ while True:
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
-            for i in range(prefs['Game.aim_guide_distance']):
+            for i in range(prefs['Game.aim_guide_distance'] * FPS):
                 oldpos = pygame.math.Vector2(b.pos)
                 died = b.advance()
                 if died:
