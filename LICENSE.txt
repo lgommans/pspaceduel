@@ -2,14 +2,16 @@ General code: TODO.
 
 The file res/stackoverflow-frisa-theme-renderedbackground.png is copyright StackOverflow (April Fools' 2022). https://meta.stackoverflow.com/questions/416970/aww-snap-we-ve-got-filters-now
 
-The file res/earth.gif is ©Maulor, licensed under Creative Commons Attribution-Share Alike 4.0 International. https://en.wikipedia.org/wiki/File:Earth_rotation.gif
+The file res/earth.gif is ©Maulor, licensed under CC BY SA 4.0 International. https://en.wikipedia.org/wiki/File:Earth_rotation.gif
 
 The file res/sun.png is public domain, by NASA's Solar Dynamics Observatory. https://en.wikipedia.org/wiki/File:The_Sun_by_the_Atmospheric_Imaging_Assembly_of_NASA%27s_Solar_Dynamics_Observatory_-_20100819.jpg
 
-The file res/that's-no-moon.png is ©Loïc Norgeot, licensed under Creative commons CC BY 4.0. https://sketchfab.com/3d-models/earthquakes-2010-2011-3a57cfbbcb1c45278c13bc66886dd6ee
+The file res/that's-no-moon.png is ©Loïc Norgeot, licensed under CC BY 4.0. https://sketchfab.com/3d-models/earthquakes-2010-2011-3a57cfbbcb1c45278c13bc66886dd6ee
 
-The file res/Messier-101-test.jpg is by ESA/Hubble, licensed Creative Commons Attribution 4.0 International with additional restrictions.
+The file res/Messier-101-test.jpg is by ESA/Hubble, licensed CC BY 4.0 International with additional restrictions.
 Obtained via https://en.wikipedia.org/wiki/File:M101_hires_STScI-PRC2006-10a.jpg which lists to https://esahubble.org/copyright/ for the specific restrictions.
 FAQ says the credits must be burned into the image or you must present the unaltered image, so I burned in credits using the text suggested in the FAQ.
 The modification is substantial, editing the color balance and applying a cropping and fade effect to make it work in the game.
+
+The files res/player1.png and res/player2.png are derived from the Imperial Customs Corvette model by lightwarrior, licensed under CC BY 4.0. https://sketchfab.com/3d-models/imperial-customs-corvette-4813cef08b5a449488dcc835eabbf42a
 
