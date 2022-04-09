@@ -80,7 +80,7 @@ prefs = {
     # Show a prediction line for bullets
     'Game.show_aim_guide':  True,
     # The color of the line
-    'Game.aim_guide_color': (80, 0, 0),
+    'Game.aim_guide_color': ( 80, 190,  20),
     # How long should the aim guide be? Measured in seconds, i.e. how far a bullet flies in 2 seconds (you might liken it to the 'light year' distance unit!)
     'Game.aim_guide_distance': 2,
 
