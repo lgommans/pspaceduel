@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# TODO add bullet accuracy statistics
+# TODO if you die on someone's spawn position then you collide on the first frame
 
 import sys, os, math, time, random, socket, threading
 import pygame
