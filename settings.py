@@ -89,6 +89,9 @@ prefs = {
     # Same, but while holding Shift + arrow left or right.
     'Player.rotate_speed_fine': 1,
 
+    # Maximum engine thrust is a game setting, not a user preference, but with the Shift key you can do a more minor adjustment. How much should that factor be?
+    'Player.thrust_factor_fine': 0.3,
+
     # How big/tall should the health and energy indicators be, as a fraction of the player height after scaling?
     'Player.indicator_height':   0.14,
     # How far away should these indicators be, as a fraction of the player height after scaling?

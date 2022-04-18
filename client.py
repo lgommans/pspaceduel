@@ -95,11 +95,18 @@ class Player:
         self.reloadstate = 0
         self.hitsdealt = 0
 
-    def thrust(self):
-        if self.batterylevel > settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val, self.angle)
-            self.batterylevel -= settings['Player.thrust'].val / settings['Player.thrust/kJ'].val
+    def thrust(self, fine=False):
+        if fine:
+            finefactor = prefs['Player.thrust_factor_fine']
+        else:
+            finefactor = 1
+
+        energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
+
+        if self.batterylevel > energyNeeded:
+            self.speed.x += lengthdir_x(energyNeeded, self.angle)
+            self.speed.y += lengthdir_y(energyNeeded, self.angle)
+            self.batterylevel -= energyNeeded
 
     def draw(self, screen):
         self.spr.rect.left = roundi(self.pos.x)
@@ -644,7 +651,9 @@ while True:
         gravitywell.animationStep()
 
     if game.state == STATE_PLAYERING:
-        game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
+        fineMode = keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT]
+
+        game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], fineMode)
 
         if keystates[pygame.K_SPACE]:
             if game.players[0].reloadstate <= 0 and game.players[0].batterylevel > settings['Player.kJ/shot'].val:
@@ -653,7 +662,7 @@ while True:
                 game.bullets.add(Bullet(game.players[0]))
 
         if keystates[pygame.K_UP]:
-            game.players[0].thrust()
+            game.players[0].thrust(fineMode)
 
         removebullets = []
         for bullet in game.bullets:
@@ -707,7 +716,7 @@ while True:
             bl = player.batterylevel / settings['Player.battSize'].val
             bgcol = prefs['Player.indicator_energy_color_bg']
             poweryellow = prefs['Player.indicator_energy_color_good']
-            if player.batterylevel < (settings['Player.thrust'].val / settings['Player.thrust/kJ'].val) * 2:
+            if player.batterylevel < (settings['Player.thrust'].val / settings['Player.thrust/kJ'].val):
                 indicatorcolor = prefs['Player.indicator_energy_color_out']
             elif player.batterylevel < settings['Player.kJ/shot'].val:
                 indicatorcolor = prefs['Player.indicator_energy_color_low']
