@@ -104,8 +104,8 @@ class Player:
         energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
 
         if self.batterylevel > energyNeeded:
-            self.speed.x += lengthdir_x(energyNeeded, self.angle)
-            self.speed.y += lengthdir_y(energyNeeded, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val * finefactor, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val * finefactor, self.angle)
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):

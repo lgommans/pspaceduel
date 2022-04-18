@@ -74,7 +74,7 @@ prefs = {
     # The base image that goes behind everything else. Set to None for, well, none
     'Game.backgroundimage': 'res/Messier-101-test.jpg',
     # Color and position of the main text messages
-    'Game.text_color':      (  0,  90, 224),
+    'Game.text_color':      (  0, 90, 224),
     'Game.text_position':   (10, 50),
 
     # Show a prediction line for bullets
@@ -127,7 +127,7 @@ prefs = {
 ###
 settings = {
     # How fast the game runs (how much time is simulated every frame)
-    'Game.speed':      Setting(   0.1, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Game.speed':      Setting(   0.3, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
 
     # How much damage a single hit incurs
     'Bullet.damage':   Setting(   0.1, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
