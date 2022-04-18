@@ -35,7 +35,7 @@ There are also regressions:
  - There is no AI (computer player)
  - Hot seat multiplayer (players sharing a keyboard) is not supported
    (Heck, I have a keyboard that doesn't support 3 concurrent keys, let alone
-	those required for another player! PS/2 lent itself better for hot seat...)
+    those required for another player! PS/2 lent itself better for hot seat...)
  - Powerups are not featured in this version
  - Mines are not featured in this version
  - The code is a mess. I wanted to get it playable and a lot of technical debt
