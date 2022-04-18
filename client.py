@@ -56,8 +56,8 @@ class Bullet(pygame.sprite.Sprite):
         accelx, accely, separation = gravity(self.pos, ZEROVECTOR, settings['Bullet.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
-        self.pos.x += self.speed.x
-        self.pos.y += self.speed.y
+        self.pos.x += self.speed.x * settings['Game.speed'].val
+        self.pos.y += self.speed.y * settings['Game.speed'].val
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
@@ -97,8 +97,8 @@ class Player:
 
     def thrust(self):
         if self.batterylevel > settings['Player.thrust'].val / settings['Player.thrust/kJ'].val:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * FRAMETIME / settings['Player.mass'].val, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * FRAMETIME / settings['Player.mass'].val, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val, self.angle)
             self.batterylevel -= settings['Player.thrust'].val / settings['Player.thrust/kJ'].val
 
     def draw(self, screen):
@@ -134,8 +134,8 @@ class Player:
         accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), ZEROVECTOR, settings['Player.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
-        self.pos.x += self.speed.x
-        self.pos.y += self.speed.y
+        self.pos.x += self.speed.x * settings['Game.speed'].val
+        self.pos.y += self.speed.y * settings['Game.speed'].val
 
         if separation < (settings['GW.radius'].val) + (self.spr.rect.width / 2):  # GW assumed to be spherical
             if game.singleplayer and self == game.players[1]:
@@ -461,7 +461,7 @@ def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
     separation_x = obj1pos.x - obj2pos.x
     separation_y = obj1pos.y - obj2pos.y
     separation_square = (separation_x * separation_x) + (separation_y * separation_y)
-    grav_accel = obj1mass * obj2mass / separation_square * (FRAMETIME * GRAVITYCONSTANT)
+    grav_accel = obj1mass * obj2mass / separation_square * (TIME_PER_FRAME * GRAVITYCONSTANT)
     separation = math.sqrt(separation_square)
     dir_x = separation_x / separation
     dir_y = separation_y / separation
@@ -577,7 +577,7 @@ SCREENSIZE = (1900, 980)
 FPS = 60
 
 FRAMETIME = 1 / FPS
-FTGC = FRAMETIME * GRAVITYCONSTANT
+TIME_PER_FRAME = FRAMETIME * settings['Game.speed'].val
 ZEROVECTOR = pygame.math.Vector2(0, 0)
 
 STATE_INITIAL   = 0
@@ -703,6 +703,7 @@ while True:
 
             # Use int() for size calculations instead of roundi() because it'll do this "rounding towards the even choice" and you get it trying to draw on even coordinates of the screen (jumping around)
             # Draw battery level indicators
+            # TODO mind the shift
             bl = player.batterylevel / settings['Player.battSize'].val
             bgcol = prefs['Player.indicator_energy_color_bg']
             poweryellow = prefs['Player.indicator_energy_color_good']
@@ -732,7 +733,7 @@ while True:
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
-            for i in range(prefs['Game.aim_guide_distance'] * FPS):
+            for i in range(int(prefs['Game.aim_guide_distance'] * FPS / settings['Game.speed'].val)):
                 oldpos = pygame.math.Vector2(b.pos)
                 died = b.advance()
                 if died:

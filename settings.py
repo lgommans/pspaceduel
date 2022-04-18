@@ -123,6 +123,9 @@ prefs = {
 # TODO explain how to change the setting and to leave the lambda etc. alone
 ###
 settings = {
+    # How fast the game runs (how much time is simulated every frame)
+    'Game.speed':      Setting(   0.1, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
+
     # How much damage a single hit incurs
     'Bullet.damage':   Setting(   0.1, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
@@ -142,12 +145,12 @@ settings = {
     'Player1.x':       Setting(-300,   'h'),
     'Player1.y':       Setting(   0,   'h'),
     'Player1.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player1.yspeed':  Setting(   1,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.yspeed':  Setting( 2.5,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Start x and y, and initial speed, of player 2
     'Player2.x':       Setting( 300,   'h'),
     'Player2.y':       Setting(   0,   'h'),
     'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player2.yspeed':  Setting(  -1,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.yspeed':  Setting(-2.5,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Battery capacity for each player (kilojoules)
     'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)
@@ -169,7 +172,7 @@ settings = {
     # The Gravity Well (GW) is the heavy object in the middle. Here you can configure whether it appears as a star (such as the Sun) or a planet or so.
     'GW.imagenumber':  Setting(   4,   'B'),
     # Weight of the GW (kilograms)
-    'GW.mass':         Setting(4e14,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
+    'GW.mass':         Setting(2e15,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting(  10,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
