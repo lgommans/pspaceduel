@@ -120,6 +120,7 @@ prefs = {
 # Game settings.
 # These are synchronised with the other player when you are the first player to arrive in a multiplayer game, or when you play singleplayer.
 # If you change anything aside from the value, e.g. the 'B' or 'h' or 'lambda' field, your game will be incompatible with other players who did not make the exact same change!
+# TODO explain how to change the setting and to leave the lambda etc. alone
 ###
 settings = {
     # How much damage a single hit incurs
@@ -129,7 +130,7 @@ settings = {
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
     'Bullet.speed':    Setting(   5,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
-    'Bullet.relspeed': Setting(False,  'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
+    'Bullet.relspeed': Setting( True,  'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
     'Bullet.size':     Setting(   2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
 

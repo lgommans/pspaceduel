@@ -146,13 +146,17 @@ class Player:
 
         if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2):
             self.pos.x = (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val
+            self.pos.y = -self.pos.y
         elif self.pos.x > (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val:
             self.pos.x = settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2)
+            self.pos.y = -self.pos.y
 
         if self.pos.y < settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2):
             self.pos.y = (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val
+            self.pos.x = -self.pos.x
         elif self.pos.y > (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val:
             self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2)
+            self.pos.x = -self.pos.x
 
         if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
