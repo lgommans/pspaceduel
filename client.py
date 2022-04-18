@@ -138,7 +138,10 @@ class Player:
             self.reloadstate -= 1
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        accelx, accely, separation = gravity(pygame.math.Vector2(self.spr.rect.center), ZEROVECTOR, settings['Player.mass'].val, settings['GW.mass'].val)
+        # TODO do this better so you don't have to calculate this every time... spr.rect.center is incorrect, maybe due to rounding?
+        halfpw = self.spr.rect.width / 2
+        halfph = self.spr.rect.height / 2
+        accelx, accely, separation = gravity(pygame.math.Vector2(self.pos) + pygame.math.Vector2(halfpw, halfph), ZEROVECTOR, settings['Player.mass'].val, settings['GW.mass'].val)
         self.speed.x -= accelx
         self.speed.y -= accely
         self.pos.x += self.speed.x * settings['Game.speed'].val
@@ -305,6 +308,7 @@ class Game:
                 print('Waiting for initial setup data, got this instead: ', msg)
                 return
 
+            # TODO this needs some way of resetting between rounds
             Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
 
             gravitywell.setImage(settings['GW.imagenumber'].val)
