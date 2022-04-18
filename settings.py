@@ -148,12 +148,12 @@ settings = {
     'Player1.x':       Setting(-300,   'h'),
     'Player1.y':       Setting(   0,   'h'),
     'Player1.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player1.yspeed':  Setting( 2.5,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.yspeed':  Setting( 2.72,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Start x and y, and initial speed, of player 2
     'Player2.x':       Setting( 300,   'h'),
     'Player2.y':       Setting(   0,   'h'),
     'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player2.yspeed':  Setting(-2.5,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.yspeed':  Setting(-2.72,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Battery capacity for each player (kilojoules)
     'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)
@@ -179,6 +179,6 @@ settings = {
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting(  10,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
-    'GW.radius':       Setting(  60,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
+    'GW.radius':       Setting(  30,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
 }
 

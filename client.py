@@ -77,7 +77,6 @@ class Player:
         rect = img.get_rect()
 
         self.n = n
-        self.seqno = 0
         self.img = pygame.transform.scale(img, (roundi(rect.width * settings['Player.scale'].val), roundi(rect.height * settings['Player.scale'].val)))
         self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
@@ -94,6 +93,7 @@ class Player:
         self.batterylevel = settings['Player.battSize'].val
         self.reloadstate = 0
         self.hitsdealt = 0
+        self.seqno = 0
 
     def thrust(self, fine=False):
         if fine:
