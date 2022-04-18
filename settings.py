@@ -130,11 +130,11 @@ settings = {
     'Game.speed':      Setting(   0.3, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
 
     # How much damage a single hit incurs
-    'Bullet.damage':   Setting(   0.1, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Bullet.damage':   Setting(  0.06, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
     'Bullet.mass':     Setting(   0.5, 'B', lambda n: int(round(n * 255)), lambda n: n / 255), 
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
-    'Bullet.speed':    Setting(   5,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
+    'Bullet.speed':    Setting(   7,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
     'Bullet.relspeed': Setting( True,  'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
@@ -168,7 +168,7 @@ settings = {
     # Weight of the spacecraft (kilograms)
     'Player.mass':     Setting( 100,   'B'),
     # Time required to reload the craft (seconds)
-    'Player.reload':   Setting(   0.4, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player.reload':   Setting(   0.5, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
     # How much can the craft prepare a next shot to shoot faster bursts? Value multiplied with Player.reload, so -0.5 with Player.reload of 0.1 will be 'negative' 0.05 seconds reload state
     'Player.minreload':Setting(   0.0, 'b', lambda n: int(round(n * 100)), lambda n: n / 100),
 
@@ -177,7 +177,7 @@ settings = {
     # Weight of the GW (kilograms)
     'GW.mass':         Setting(2e15,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
-    'GW.radiation':    Setting(  10,   'B'),
+    'GW.radiation':    Setting(  25,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
     'GW.radius':       Setting(  30,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
 }
