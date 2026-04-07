@@ -32,10 +32,15 @@ class Spark:
 
 
 class Bullet(pygame.sprite.Sprite):
+    # note: Bullet objects are always about locally-simulated bullets. The ones from a remote player (in online multiplayer) are in game.remotebullets.
+
     # multiplied with the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere when the shot was just below escape velocity
     MAX_OUT_OF_SCREEN = 0.25
 
     def __init__(self, playerobj, virtual=False):
+        # 'virtual' bullets are used for simulating where a bullet *would* go, e.g. to draw an aim guide / expected trajectory line.
+        # We do not store who the bullet belonged to because it does not matter: whoever collides with it gets damaged. The playerobj parameter is just for initial position and vector.
+
         pygame.sprite.Sprite.__init__(self)
 
         x = playerobj.spr.rect.center[0] + lengthdir_x(playerobj.spr.rect.height, playerobj.angle)
@@ -47,10 +52,11 @@ class Bullet(pygame.sprite.Sprite):
             self.speed = pygame.math.Vector2(0, 0)
         self.speed.x += lengthdir_x(settings['Bullet.speed'].val, playerobj.angle)
         self.speed.y += lengthdir_y(settings['Bullet.speed'].val, playerobj.angle)
-        self.belongsTo = playerobj.n
         self.radius = settings['Bullet.size'].val
         self.virtual = virtual
-        if not virtual:
+
+        if not self.virtual:
+            # self.rect is only used in drawing code
             self.rect = pygame.rect.Rect(0, 0, self.radius, self.radius)
 
     def advance(self):
@@ -64,7 +70,7 @@ class Bullet(pygame.sprite.Sprite):
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        if game.players[0].n == self.belongsTo and separation < settings['GW.radius'].val:  # GW assumed to be spherical
+        if separation < settings['GW.radius'].val:  # GW assumed to be spherical
             return True
 
         if self.pos.x < -(SCREENSIZE[0] / 2) - ((SCREENSIZE[0] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.x > (SCREENSIZE[0] / 2) + (SCREENSIZE[0] / 2 * Bullet.MAX_OUT_OF_SCREEN) \
@@ -117,6 +123,12 @@ class Player:
         if self.bot is not None:
             self.bot.reset()
 
+    def tryShoot(self):
+        if self.reloadstate <= 0 and self.batterylevel > settings['Player.kJ/shot'].val:
+            self.reloadstate += FPS * settings['Player.reload'].val
+            self.batterylevel -= settings['Player.kJ/shot'].val
+            self.game.bullets.add(Bullet(self))
+
     def thrust(self, fine=False):
         # TODO animation? Or leave the ion engine exhaust invisible?
 
@@ -165,7 +177,16 @@ class Player:
             actions = self.bot.step(self.game)
             if botlib.Action.THRUST in actions:
                 self.thrust()
-            # TODO execute the bot's other actions (unify with human player input code)
+            if botlib.Action.SHOOT in actions:
+                self.tryShoot()
+            if botlib.Action.ROTATE_LEFT_FINE in actions:
+                self.rotate(1, True)
+            elif botlib.Action.ROTATE_RIGHT_FINE in actions:
+                self.rotate(-1, True)
+            elif botlib.Action.ROTATE_RIGHT in actions:
+                self.rotate(-1, False)
+            elif botlib.Action.ROTATE_LEFT in actions:
+                self.rotate(1, False)
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
         # TODO do this better so you don't have to calculate this every time... spr.rect.center is incorrect, maybe due to rounding?
@@ -704,36 +725,29 @@ while True:
         game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], fineMode)
 
         if keystates[pygame.K_SPACE]:
-            if game.players[0].reloadstate <= 0 and game.players[0].batterylevel > settings['Player.kJ/shot'].val:
-                game.players[0].reloadstate += FPS * settings['Player.reload'].val
-                game.players[0].batterylevel -= settings['Player.kJ/shot'].val
-                game.bullets.add(Bullet(game.players[0]))
+            game.players[0].tryShoot()
 
         if keystates[pygame.K_UP]:
             game.players[0].thrust(fineMode)
 
         removebullets = []
         for bullet in game.bullets:
-            if bullet.belongsTo == game.players[0].n:
-                died = bullet.advance()
-                if died:
-                    removebullets.append(bullet)
+            died = bullet.advance()
+            if died:
+                removebullets.append(bullet)
         for bullet in removebullets:
-            if bullet.belongsTo == game.players[0].n:
-                game.bullets.remove(bullet)
+            game.bullets.remove(bullet)
         for player in game.players:
             removebullets = pygame.sprite.spritecollide(player.spr, game.bullets, False, pygame.sprite.collide_circle)
             for bullet in removebullets:
-                if bullet.belongsTo == game.players[0].n:
-                    game.sparks.append(Spark(bullet.pos))
-                    game.bullets.remove(bullet)
-                    if player == game.players[1]:  # but did we hit the other player or ourselves?
-                        if game.singleplayer:
-                            game.players[1].health = max(0, game.players[1].health - settings['Bullet.damage'].val)
-                        else:
-                            game.players[0].hitsdealt += 1
-                    else:
-                        game.players[0].health = max(0, game.players[0].health - settings['Bullet.damage'].val)
+                game.sparks.append(Spark(bullet.pos))
+                game.bullets.remove(bullet)
+                # If we're in singleplayer, setting `player` health simply works as expected.
+                # In multiplayer, we receive hit and health info from the other player so, in that case, alter the player health only if we hit ourselves (that is: if player.n==1)
+                if game.singleplayer or player.n == 1:
+                    player.health = max(0, player.health - settings['Bullet.damage'].val)
+                else:
+                    game.players[0].hitsdealt += 1
 
         removesparks = []
         for spark in game.sparks:
