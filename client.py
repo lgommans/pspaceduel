@@ -743,8 +743,8 @@ while True:
                 game.sparks.append(Spark(bullet.pos))
                 game.bullets.remove(bullet)
                 # If we're in singleplayer, setting `player` health simply works as expected.
-                # In multiplayer, we receive hit and health info from the other player so, in that case, alter the player health only if we hit ourselves (that is: if player.n==1)
-                if game.singleplayer or player.n == 1:
+                # In multiplayer, we receive hit and health info from the other player so, in that case, alter the player health only if we hit ourselves (game.players[0])
+                if game.singleplayer or player.n == game.players[0].n:
                     player.health = max(0, player.health - settings['Bullet.damage'].val)
                 else:
                     game.players[0].hitsdealt += 1
