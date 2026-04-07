@@ -101,11 +101,11 @@ class Player:
         self.spr.mask = pygame.mask.from_surface(self.img)
         self.pos = None
         self.speed = None
+        self.reset()
         if bot is None:
             self.bot = None
         else:
             self.bot = importlib.import_module(bot)
-        self.reset()
 
     def reset(self):
         self.angle = 0  # 0-360
