@@ -466,7 +466,7 @@ class Game:
 
     def schedulePing(self):
         # game step countdown
-        self.nextPingAt = random.randint(FPS * (prefs['Multiplayer.pinginterval'] / 2), FPS * (prefs['Multiplayer.pinginterval'] * 2))
+        self.nextPingAt = random.randint(int(FPS * (prefs['Multiplayer.pinginterval'] / 2)), int(FPS * (prefs['Multiplayer.pinginterval'] * 2)))
         self.pingSentAt = None
 
     def recvFromNetwork(self):
