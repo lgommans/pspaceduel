@@ -284,7 +284,7 @@ class Game:
 
         self.players = [
             Player(1, self, bot=None),
-            Player(2, self, bot='bots.noop'),
+            Player(2, self, bot='bots.random'),
         ]
         self.players[0].reset()
         self.players[1].reset()
