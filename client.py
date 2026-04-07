@@ -2,9 +2,10 @@
 # TODO add bullet accuracy statistics
 # TODO if you die on someone's spawn position then you collide on the first frame
 
-import sys, os, math, time, random, socket, threading
+import sys, os, math, time, random, socket, threading, importlib
 import pygame
 import mplib
+import botlib
 from settings import Setting, settings, prefs
 from luclib import *
 
@@ -74,11 +75,24 @@ class Bullet(pygame.sprite.Sprite):
 
 
 class Player:
-    def __init__(self, n):
+    def __init__(self, n, game, bot=None):
+        """
+        Parameters:
+          n: the player number (int)
+          game: the instance of the game object which is initialising this player
+          bot: str or None. If string, it must be an importable Python module (bot="bots.myAI" will try to include "./bots/myAI.py").
+              The game will call bot.reset() when a round is about to start (also the first round).
+              The game will call bot.step(game) every time you may make a decision about what to do. Use the game state to make a decision and return an action list.
+              The action list must consist of zero or more values from botlib.Action; repetitions within the same list have no effect.
+              The game state ('game' parameter for bot.step) is currently just the game object, which can be used to cheat. Assume that future versions present a read-only copy.
+              If a bot raises any exception, the game is undecided (neither drawn, won, nor lost). It is up to the person running the game to handle this situation.
+        """
         img = pygame.image.load(f'res/player{n}.png')
         rect = img.get_rect()
 
         self.n = n
+        self.game = game
+        self.seqno = 0
         self.img = pygame.transform.scale(img, (roundi(rect.width * settings['Player.scale'].val), roundi(rect.height * settings['Player.scale'].val)))
         self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
@@ -87,17 +101,25 @@ class Player:
         self.spr.mask = pygame.mask.from_surface(self.img)
         self.pos = None
         self.speed = None
-        self.reinitialize()
+        if bot is None:
+            self.bot = None
+        else:
+            self.bot = importlib.import_module(bot)
+        self.reset()
 
-    def reinitialize(self):
+    def reset(self):
         self.angle = 0  # 0-360
         self.health = 1  # 0-1
         self.batterylevel = settings['Player.battSize'].val
         self.reloadstate = 0
         self.hitsdealt = 0
         self.seqno = 0
+        if self.bot is not None:
+            self.bot.reset()
 
     def thrust(self, fine=False):
+        # TODO animation? Or leave the ion engine exhaust invisible?
+
         if fine:
             finefactor = prefs['Player.thrust_factor_fine']
         else:
@@ -138,6 +160,12 @@ class Player:
 
         if self.reloadstate > FPS * settings['Player.reload'].val * settings['Player.minreload'].val:
             self.reloadstate -= 1
+
+        if self.bot is not None:
+            actions = self.bot.step(self.game)
+            if botlib.Action.THRUST in actions:
+                self.thrust()
+            # TODO execute the bot's other actions (unify with human player input code)
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
         # TODO do this better so you don't have to calculate this every time... spr.rect.center is incorrect, maybe due to rounding?
@@ -184,10 +212,7 @@ class Game:
 
         self.score = 0
         self.roundscore = 0
-        self.players = [
-            Player(1),
-            Player(2),
-        ]
+        self.players = []
 
         if not singleplayer:
             self.stopSendtoThread = False
@@ -226,8 +251,22 @@ class Game:
         self.bullets = pygame.sprite.Group()
         self.remotebullets = []
         self.roundscore = 0
-        self.players[0].reinitialize()
-        self.players[1].reinitialize()
+        self.framecounter = 0
+        if len(self.players) > 0:
+            self.players[0].reset()
+            self.players[1].reset()
+
+    def initPlayers(self):
+        if len(self.players) > 0:
+            print('Already initialized players')
+            return
+
+        self.players = [
+            Player(1, self, bot=None),
+            Player(2, self, bot='bots.noop'),
+        ]
+        self.players[0].reset()
+        self.players[1].reset()
 
     def connect(self, server):
         global statusmessage
@@ -263,6 +302,7 @@ class Game:
         self.msgQueueEvent.set()
 
     def stopMultiplayer(self, reason):
+        # Send packet directly instead of waiting for the sendto() thread to do a loop until we can stop it cleanly
         self.sock.sendto(mplib.playerquits + reason.encode('ASCII'), self.server)
         self.stopSendtoThread = True
         self.msgQueueEvent.set()
@@ -506,6 +546,7 @@ def prepareHostAndPort(hostAndPort, defaultport=9473):
         hostOrIP = hostAndPort
         port = defaultport
     else:
+        # TODO IPv6..?
         hostOrIP, port = hostAndPort.split(':', 1)
         port = int(port)
 
@@ -626,6 +667,7 @@ if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not No
     bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
 
 game = Game(singleplayer=args['singleplayer'])
+game.initPlayers()
 gravitywell = GravityWell()
 
 if game.singleplayer:
@@ -770,6 +812,8 @@ while True:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
         surface = font_statusMsg.render(msgpart, True, prefs['Game.text_color'])
         screen.blit(surface, prefs['Game.text_position'])
+
+    game.framecounter += 1
 
     pygame.display.flip()
     frametime = fpslimiter.tick(FPS)
