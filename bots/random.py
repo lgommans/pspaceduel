@@ -1,7 +1,7 @@
 import random
 import botlib
 
-def reset():
+def reset(playerobj):
     pass
 
 def step(game):

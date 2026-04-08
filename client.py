@@ -101,7 +101,7 @@ class Player(Body):
           n: the player number (int)
           game: the instance of the game object which is initialising this player
           bot: str or None. If string, it must be an importable Python module (bot="bots.myAI" will try to include "./bots/myAI.py").
-              The game will call bot.reset() when a round is about to start (also the first round).
+              The game will call bot.reset(player) when a round is about to start (also the first round), passing the object of the player character which the bot controls.
               The game will call bot.step(game) every time you may make a decision about what to do. Use the game state to make a decision and return an action list.
               The action list must consist of zero or more values from botlib.Action; repetitions within the same list have no effect.
               The game state ('game' parameter for bot.step) is currently just the game object, which can be used to cheat. Assume that future versions present a read-only copy.
@@ -137,7 +137,7 @@ class Player(Body):
         self.seqno = 0
         self.updateRotatedSprite()
         if self.bot is not None:
-            self.bot.reset()
+            self.bot.reset(self)
 
     def tryShoot(self):
         if self.reloadstate <= 0 and self.batterylevel > settings['Player.kJ/shot'].val:
