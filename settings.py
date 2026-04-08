@@ -160,7 +160,7 @@ settings = {
     'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)
     # A real ion engine delivers more like 1 Newton on 5 kW, but we're also orbiting a star in seconds instead of years so we need a bit more oomph here
-    'Player.thrust':   Setting( 200,   'H'),
+    'Player.thrust':   Setting( 250,   'H'),
     # How many Newtons do we get out of a kJ from the battery?
     'Player.thrust/kJ':Setting( 600,   'H'),
     # How many degrees of rotation do we get out of a kJ from the battery?
@@ -179,7 +179,7 @@ settings = {
     # Weight of the GW (kilograms)
     'GW.mass':         Setting(2e15,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
-    'GW.radiation':    Setting(  25,   'B'),
+    'GW.radiation':    Setting(  16,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
     'GW.radius':       Setting(  30,   'B', lambda n: int(round(n * 2)), lambda n: n / 2),
 }
