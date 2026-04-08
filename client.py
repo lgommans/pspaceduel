@@ -31,7 +31,24 @@ class Spark:
         screen.blit(rotated_image, coordsToPx(roundi(self.pos.x), roundi(self.pos.y)))
 
 
-class Bullet(pygame.sprite.Sprite):
+class Body:
+    def __init__(self, pos=None, speed=None, mass=None):
+        self.pos = pos
+        self.speed = speed
+        self.mass = mass
+
+    def advance(self):
+        accelx, accely, separation = gravity(self.pos, ZEROVECTOR, self.mass, settings['GW.mass'].val)
+        self.speed.x -= accelx
+        self.speed.y -= accely
+        self.pos.x += self.speed.x * settings['Game.speed'].val
+        self.pos.y += self.speed.y * settings['Game.speed'].val
+
+        # returns distance from gravity well's surface
+        return separation - settings['GW.radius'].val  # GW assumed to be spherical
+
+
+class Bullet(pygame.sprite.Sprite, Body):
     # note: Bullet objects are always about locally-simulated bullets. The ones from a remote player (in online multiplayer) are in game.remotebullets.
 
     # multiplied with the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere when the shot was just below escape velocity
@@ -43,35 +60,32 @@ class Bullet(pygame.sprite.Sprite):
 
         pygame.sprite.Sprite.__init__(self)
 
-        x = playerobj.spr.rect.center[0] + lengthdir_x(playerobj.spr.rect.height, playerobj.angle)
-        y = playerobj.spr.rect.center[1] + lengthdir_y(playerobj.spr.rect.height, playerobj.angle)
-        self.pos = pygame.math.Vector2(x, y)
+        x = playerobj.pos.x + lengthdir_x(player.rotatedMaxSize, playerobj.angle)
+        y = playerobj.pos.y + lengthdir_y(player.rotatedMaxSize, playerobj.angle)
         if settings['Bullet.relspeed'].val:
-            self.speed = pygame.math.Vector2(playerobj.speed)
+            speed = pygame.math.Vector2(playerobj.speed)
         else:
-            self.speed = pygame.math.Vector2(0, 0)
+            speed = ZEROVECTOR
+        Body.__init__(self, pos=pygame.math.Vector2(x, y), speed=speed, mass=settings['Bullet.mass'].val)
+
         self.speed.x += lengthdir_x(settings['Bullet.speed'].val, playerobj.angle)
         self.speed.y += lengthdir_y(settings['Bullet.speed'].val, playerobj.angle)
-        self.radius = settings['Bullet.size'].val
         self.virtual = virtual
 
         if not self.virtual:
             # self.rect is only used in drawing code
-            self.rect = pygame.rect.Rect(0, 0, self.radius, self.radius)
+            self.rect = pygame.rect.Rect(0, 0, settings['Bullet.size'].val, settings['Bullet.size'].val)
 
     def advance(self):
         # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
 
-        accelx, accely, separation = gravity(self.pos, ZEROVECTOR, settings['Bullet.mass'].val, settings['GW.mass'].val)
-        self.speed.x -= accelx
-        self.speed.y -= accely
-        self.pos.x += self.speed.x * settings['Game.speed'].val
-        self.pos.y += self.speed.y * settings['Game.speed'].val
+        separation = super().advance()
+
+        if separation < settings['Bullet.size'].val:
+            return True
+
         if not self.virtual:
             self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
-
-        if separation < settings['GW.radius'].val:  # GW assumed to be spherical
-            return True
 
         if self.pos.x < -(SCREENSIZE[0] / 2) - ((SCREENSIZE[0] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.x > (SCREENSIZE[0] / 2) + (SCREENSIZE[0] / 2 * Bullet.MAX_OUT_OF_SCREEN) \
         or self.pos.y < -(SCREENSIZE[1] / 2) - ((SCREENSIZE[1] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.y > (SCREENSIZE[1] / 2) + (SCREENSIZE[1] / 2 * Bullet.MAX_OUT_OF_SCREEN):
@@ -80,7 +94,7 @@ class Bullet(pygame.sprite.Sprite):
         return False
 
 
-class Player:
+class Player(Body):
     def __init__(self, n, game, bot=None):
         """
         Parameters:
@@ -99,14 +113,15 @@ class Player:
         self.n = n
         self.game = game
         self.seqno = 0
+
         self.img = pygame.transform.scale(img, (roundi(rect.width * settings['Player.scale'].val), roundi(rect.height * settings['Player.scale'].val)))
         self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
-        self.spr.image = self.img
         self.spr.rect = self.img.get_rect()
         self.spr.mask = pygame.mask.from_surface(self.img)
-        self.pos = None
-        self.speed = None
+        # the maximum width/height we can have as we rotate 0-360 degrees
+        self.rotatedMaxSize = max(self.spr.rect.width, self.spr.rect.height)
+
         if bot is None:
             self.bot = None
         else:
@@ -120,6 +135,7 @@ class Player:
         self.reloadstate = 0
         self.hitsdealt = 0
         self.seqno = 0
+        self.updateRotatedSprite()
         if self.bot is not None:
             self.bot.reset()
 
@@ -140,15 +156,15 @@ class Player:
         energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
 
         if self.batterylevel > energyNeeded:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val * finefactor, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / settings['Player.mass'].val * finefactor, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / self.mass * finefactor, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / self.mass * finefactor, self.angle)
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):
-        self.spr.rect.left = roundi(self.pos.x)
-        self.spr.rect.top = roundi(self.pos.y)
+        self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        blitRotateCenter(screen, self.img, coordsToPx(roundi(self.spr.rect.left), roundi(self.spr.rect.top)), self.angle)
+        new_rect = self.rotated_image.get_rect(center=coordsToPx(*self.pos))
+        screen.blit(self.rotated_image, new_rect)
 
     def rotate(self, direction, fine=False):  # direction is 1 or -1
         if direction == 0:
@@ -159,8 +175,11 @@ class Player:
             self.batterylevel -= abs(rotationamount) / settings['Player.rot/kJ'].val
             self.angle += rotationamount
             self.angle %= 360
-            rotated_image = pygame.transform.rotate(self.img, self.angle)
-            self.spr.mask = pygame.mask.from_surface(rotated_image)
+            self.updateRotatedSprite()
+
+    def updateRotatedSprite(self):
+        self.rotated_image = pygame.transform.rotate(self.img, self.angle)
+        self.spr.mask = pygame.mask.from_surface(self.rotated_image)
 
     def update(self):  # this function should only be run on the local player while in multiplayer mode, since it calls playerDied which triggers network events
         if self.health <= 0:
@@ -189,34 +208,27 @@ class Player:
                 self.rotate(1, False)
 
         # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        # TODO do this better so you don't have to calculate this every time... spr.rect.center is incorrect, maybe due to rounding?
-        halfpw = self.spr.rect.width / 2
-        halfph = self.spr.rect.height / 2
-        accelx, accely, separation = gravity(pygame.math.Vector2(self.pos) + pygame.math.Vector2(halfpw, halfph), ZEROVECTOR, settings['Player.mass'].val, settings['GW.mass'].val)
-        self.speed.x -= accelx
-        self.speed.y -= accely
-        self.pos.x += self.speed.x * settings['Game.speed'].val
-        self.pos.y += self.speed.y * settings['Game.speed'].val
+        separation = Body.advance(self)
 
-        if separation < (settings['GW.radius'].val) + (self.spr.rect.width / 2):  # GW assumed to be spherical
+        if separation < ((self.spr.rect.width / 2) + (self.spr.rect.height / 2)) / 2:
             if game.singleplayer and self == game.players[1]:
                 game.playerDied(other=True)
             else:
                 game.playerDied(other=False)
             return
 
-        if self.pos.x < settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2):
+        if self.pos.x < settings['Player.visiblepx'].val - (SCREENSIZE[0] / 2):
             self.pos.x = (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val
             self.pos.y = -self.pos.y
         elif self.pos.x > (SCREENSIZE[0] / 2) - settings['Player.visiblepx'].val:
-            self.pos.x = settings['Player.visiblepx'].val - self.spr.rect.width - (SCREENSIZE[0] / 2)
+            self.pos.x = settings['Player.visiblepx'].val - (SCREENSIZE[0] / 2)
             self.pos.y = -self.pos.y
 
-        if self.pos.y < settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2):
+        if self.pos.y < settings['Player.visiblepx'].val - (SCREENSIZE[1] / 2):
             self.pos.y = (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val
             self.pos.x = -self.pos.x
         elif self.pos.y > (SCREENSIZE[1] / 2) - settings['Player.visiblepx'].val:
-            self.pos.y = settings['Player.visiblepx'].val - self.spr.rect.height - (SCREENSIZE[1] / 2)
+            self.pos.y = settings['Player.visiblepx'].val - (SCREENSIZE[1] / 2)
             self.pos.x = -self.pos.x
 
         if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
@@ -375,12 +387,13 @@ class Game:
             Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
 
             gravitywell.setImage(settings['GW.imagenumber'].val)
-            halfpw = self.players[0].spr.rect.width / 2
-            halfph = self.players[0].spr.rect.height / 2
-            self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val - halfpw, settings['Player1.y'].val - halfph)
+            self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
             self.players[self.players[0].n - 1].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-            self.players[self.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val - halfpw, settings['Player2.y'].val - halfph)
+            self.players[self.players[0].n - 1].mass = settings['Player.mass'].val
+            self.players[self.players[1].n - 1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
             self.players[self.players[1].n - 1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+            self.players[self.players[1].n - 1].mass = settings['Player.mass'].val
+
             self.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
             self.state = STATE_PLAYERING
             statusmessage = ''
@@ -507,7 +520,8 @@ class GravityWell:
                 print('Note: GravityWell image number', imagenumber, 'was requested but we do not have it.')
 
             self.framecounter = 0  # in case it needs resetting
-            GWwidth = roundi(settings['GW.radius'].val * 2)
+            # 1px on either side for fuzzy/semi-transparent borders
+            GWwidth = roundi((settings['GW.radius'].val + 1) * 2)
             if self.image.get_rect().width != GWwidth:
                 wh = (GWwidth, GWwidth)  # since it's spherical... width,height == width,width
                 if self.frames is not None:
@@ -546,12 +560,6 @@ def roundi(n):  # because pygame wants an int and round() returns a float for so
     return int(round(n))
 
 
-def blitRotateCenter(surf, image, pos, angle):
-    # this function is CC-BY-SA 4.0 by Rabbid76 from https://stackoverflow.com/a/54714144
-    rotated_image = pygame.transform.rotate(image, angle)
-    new_rect = rotated_image.get_rect(center=image.get_rect(topleft = pos).center)
-    surf.blit(rotated_image, new_rect)
-
 
 def quitProgram(reason, exitstatus=0):
     if not game.singleplayer:
@@ -581,13 +589,13 @@ def prepareHostAndPort(hostAndPort, defaultport=9473):
 
 
 def initSinglePlayer():
-    halfpw = game.players[0].spr.rect.width / 2
-    halfph = game.players[0].spr.rect.height / 2
-    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val - halfpw, settings['Player1.y'].val - halfph)
+    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
     game.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+    game.players[0].mass = settings['Player.mass'].val
     game.players[0].draw(screen)  # updates the sprite position to avoid a collision with player 2
-    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val - halfpw, settings['Player2.y'].val - halfph)
+    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
     game.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+    game.players[1].mass = settings['Player.mass'].val
     game.players[1].draw(screen)
     game.newRound()
     game.state = STATE_PLAYERING
@@ -716,7 +724,8 @@ while True:
     if prefs['Game.simple_graphics'] or gravitywell.image is None:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
         pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), 50)
     else:
-        screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val, -settings['GW.radius'].val))
+        # 1px on either side for fuzzy/semi-transparent borders
+        screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val - 1, -settings['GW.radius'].val - 1))
         gravitywell.animationStep()
 
     if game.state == STATE_PLAYERING:
@@ -767,14 +776,12 @@ while True:
         for player in game.players:
             player.draw(screen)
 
-            w, h = player.spr.rect.width, player.spr.rect.height
-            x, y = player.spr.rect.center
-            idis = h * prefs['Player.indicator_distance']
-            iheight = roundi(h * prefs['Player.indicator_height'])
+            idis = player.rotatedMaxSize * prefs['Player.indicator_distance']
+            iwidth = roundi(player.rotatedMaxSize * prefs['Player.indicator_width'])
+            iheight = roundi(player.rotatedMaxSize * prefs['Player.indicator_height'])
 
             # Use int() for size calculations instead of roundi() because it'll do this "rounding towards the even choice" and you get it trying to draw on even coordinates of the screen (jumping around)
             # Draw battery level indicators
-            # TODO mind the shift
             bl = player.batterylevel / settings['Player.battSize'].val
             bgcol = prefs['Player.indicator_energy_color_bg']
             poweryellow = prefs['Player.indicator_energy_color_good']
@@ -784,23 +791,27 @@ while True:
                 indicatorcolor = prefs['Player.indicator_energy_color_low']
             else:
                 indicatorcolor = poweryellow
+            x = int(player.pos.x - (iwidth / 2))
+            y = int(player.pos.y + (player.rotatedMaxSize / 2) + idis)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), int(player.pos.y + h + idis + 1)), int((w * 2 + 2)),      int(iheight + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y + 1), int((iwidth + 2)),      int(iheight + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), int(player.pos.y + h + idis + 2)), int((w * 2 + 0)),      int(iheight + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y + 2), int((iwidth + 0)),      int(iheight + 0)))
             # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(roundi(x - w - 0), int(player.pos.y + h + idis + 2)), int((w * 2 + 0) * bl), int(iheight + 0)))
+            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(x - 0, y + 2), int((iwidth + 0) * bl), int(iheight + 0)))
 
             # Draw health indicators
             healthgreen = prefs['Player.indicator_health_color_good']
             indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else prefs['Player.indicator_health_color_low']
             bgcol = prefs['Player.indicator_health_color_bg']
+            x = int(player.pos.x - (iwidth / 2))
+            y = int(player.pos.y - (player.rotatedMaxSize / 2) - idis)
             # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(roundi(x - w - 1), int(player.pos.y - idis - 2)), int((w * 2 + 2)),                 int(iheight + 2)))
+            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y - 2), int((iwidth + 2)),                 int(iheight + 2)))
             # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(roundi(x - w - 0), int(player.pos.y - idis - 1)), int((w * 2 + 0)),                 int(iheight + 0)))
+            pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y - 1), int((iwidth + 0)),                 int(iheight + 0)))
             # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(roundi(x - w - 0), int(player.pos.y - idis - 1)), int((w * 2 + 0) * player.health), int(iheight + 0)))
+            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(x - 0, y - 1), int((iwidth + 0) * player.health), int(iheight + 0)))
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)

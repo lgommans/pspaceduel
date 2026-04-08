@@ -94,8 +94,10 @@ prefs = {
 
     # How big/tall should the health and energy indicators be, as a fraction of the player height after scaling?
     'Player.indicator_height':   0.14,
-    # How far away should these indicators be, as a fraction of the player height after scaling?
+    # How far away should these indicators be, as a fraction of the player size after scaling?
     'Player.indicator_distance': 0.5,
+    # How wide should these indicators be, as a fraction of the player size after scaling?
+    'Player.indicator_width': 1.5,
     # Colors of your health bar (green by default, orange if the next bullet would kill you)
     'Player.indicator_health_color_good': ( 10, 230,  10),
     'Player.indicator_health_color_low':  (255, 100,   0),
