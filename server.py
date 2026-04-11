@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import socket, os, hashlib, time
-import mplib
+import src.mplib as mplib
 
 def genToken():
     return hashlib.sha256(os.urandom(12)).digest()[0 : 12]

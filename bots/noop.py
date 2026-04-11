@@ -1,4 +1,4 @@
-import botlib
+import src.botlib as botlib
 
 def reset(playerobj):
     pass

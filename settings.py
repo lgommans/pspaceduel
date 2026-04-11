@@ -130,15 +130,17 @@ prefs = {
 settings = {
     # How fast the game runs (how much time is simulated every frame)
     'Game.speed':      Setting(   0.3, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
+    # Number of frames per second
+    'Game.FPS':        Setting(  60,   'H'),
 
     # How much damage a single hit incurs
-    'Bullet.damage':   Setting(  0.06, 'B', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Bullet.damage':   Setting(   0.06,'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
     'Bullet.mass':     Setting(   0.5, 'B', lambda n: int(round(n * 255)), lambda n: n / 255), 
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
     'Bullet.speed':    Setting(   7,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
-    'Bullet.relspeed': Setting( True,  'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
+    'Bullet.relspeed': Setting(True,   'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
     'Bullet.size':     Setting(   2,   'B', lambda n: int(round(n * 10)),  lambda n: int(round(n / 10))),
 
@@ -150,12 +152,12 @@ settings = {
     'Player1.x':       Setting(-300,   'h'),
     'Player1.y':       Setting(   0,   'h'),
     'Player1.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player1.yspeed':  Setting( 2.72,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.yspeed':  Setting(   2.72,'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Start x and y, and initial speed, of player 2
     'Player2.x':       Setting( 300,   'h'),
     'Player2.y':       Setting(   0,   'h'),
     'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player2.yspeed':  Setting(-2.72,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.yspeed':  Setting(  -2.72,'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Battery capacity for each player (kilojoules)
     'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)

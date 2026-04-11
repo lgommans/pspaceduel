@@ -3,95 +3,23 @@
 # TODO if you die on someone's spawn position then you collide on the first frame
 
 import sys, os, math, time, random, socket, threading, importlib
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'  # suppresses "Hello from the pygame community. <url>" every time you run the binary. Not to hide that we're using pygame, of course, but I regularly look at the output and this is additional clutter
 import pygame
-import mplib
-import botlib
+import src.mplib as mplib
+import src.botlib as botlib
 from settings import Setting, settings, prefs
-from luclib import *
+from src.luclib import *
+from src.spark import Spark
+from src.body import Body
+from src.gravity_well import GravityWell
+from src.bullet import Bullet
+from src.game_state import GameState
 
-class Spark:
-    def __init__(self, pos):
-        self.pos = pygame.math.Vector2(pos)
-        self.lifespan = random.randint(*prefs['Spark.lifespan'])
-        self.angle = random.randint(0, 360)
-        self.rotation = random.randint(*prefs['Spark.rotation']) * (-1 if random.randint(1, 2) == 1 else 1)
+def update_fps():
+    global frame_time_budget, simulation_time_step
 
-    def updateAndDraw(self, screen):
-        # returns whether it needs to be destroyed
-
-        self.lifespan -= 1
-        if self.lifespan <= 0:
-            return True
-
-        self.pos.x += random.randint(*prefs['Spark.movement']) * (-1 if random.randint(1, 2) == 1 else 1)
-        self.pos.y += random.randint(*prefs['Spark.movement']) * (-1 if random.randint(1, 2) == 1 else 1)
-        self.angle += self.rotation
-
-        rotated_image = pygame.transform.rotate(Spark.IMAGE, self.angle)
-        screen.blit(rotated_image, coordsToPx(roundi(self.pos.x), roundi(self.pos.y)))
-
-
-class Body:
-    def __init__(self, pos=None, speed=None, mass=None):
-        self.pos = pos
-        self.speed = speed
-        self.mass = mass
-
-    def advance(self):
-        accelx, accely, separation = gravity(self.pos, ZEROVECTOR, self.mass, settings['GW.mass'].val)
-        self.speed.x -= accelx
-        self.speed.y -= accely
-        self.pos.x += self.speed.x * settings['Game.speed'].val
-        self.pos.y += self.speed.y * settings['Game.speed'].val
-
-        # returns distance from gravity well's surface
-        return separation - settings['GW.radius'].val  # GW assumed to be spherical
-
-
-class Bullet(pygame.sprite.Sprite, Body):
-    # note: Bullet objects are always about locally-simulated bullets. The ones from a remote player (in online multiplayer) are in game.remotebullets.
-
-    # multiplied with the screen width/height -- set relatively low because players might otherwise wonder why bullets are coming out of nowhere when the shot was just below escape velocity
-    MAX_OUT_OF_SCREEN = 0.25
-
-    def __init__(self, playerobj, virtual=False):
-        # 'virtual' bullets are used for simulating where a bullet *would* go, e.g. to draw an aim guide / expected trajectory line.
-        # We do not store who the bullet belonged to because it does not matter: whoever collides with it gets damaged. The playerobj parameter is just for initial position and vector.
-
-        pygame.sprite.Sprite.__init__(self)
-
-        x = playerobj.pos.x + lengthdir_x(player.rotatedMaxSize, playerobj.angle)
-        y = playerobj.pos.y + lengthdir_y(player.rotatedMaxSize, playerobj.angle)
-        if settings['Bullet.relspeed'].val:
-            speed = pygame.math.Vector2(playerobj.speed)
-        else:
-            speed = ZEROVECTOR
-        Body.__init__(self, pos=pygame.math.Vector2(x, y), speed=speed, mass=settings['Bullet.mass'].val)
-
-        self.speed.x += lengthdir_x(settings['Bullet.speed'].val, playerobj.angle)
-        self.speed.y += lengthdir_y(settings['Bullet.speed'].val, playerobj.angle)
-        self.virtual = virtual
-
-        if not self.virtual:
-            # self.rect is only used in drawing code
-            self.rect = pygame.rect.Rect(0, 0, settings['Bullet.size'].val, settings['Bullet.size'].val)
-
-    def advance(self):
-        # Returns whether it should be removed (out of screen, fell into gravity well; no health-bearing-object collisions)
-
-        separation = super().advance()
-
-        if separation < settings['Bullet.size'].val:
-            return True
-
-        if not self.virtual:
-            self.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
-
-        if self.pos.x < -(SCREENSIZE[0] / 2) - ((SCREENSIZE[0] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.x > (SCREENSIZE[0] / 2) + (SCREENSIZE[0] / 2 * Bullet.MAX_OUT_OF_SCREEN) \
-        or self.pos.y < -(SCREENSIZE[1] / 2) - ((SCREENSIZE[1] / 2) * Bullet.MAX_OUT_OF_SCREEN) or self.pos.y > (SCREENSIZE[1] / 2) + (SCREENSIZE[1] / 2 * Bullet.MAX_OUT_OF_SCREEN):
-            return True
-
-        return False
+    frame_time_budget = 1 / settings['Game.FPS'].val
+    simulation_time_step = frame_time_budget * settings['Game.speed'].val
 
 
 class Player(Body):
@@ -122,6 +50,8 @@ class Player(Body):
         # the maximum width/height we can have as we rotate 0-360 degrees
         self.rotatedMaxSize = max(self.spr.rect.width, self.spr.rect.height)
 
+        Body.__init__(self)
+
         if bot is None:
             self.bot = None
         else:
@@ -141,7 +71,7 @@ class Player(Body):
 
     def tryShoot(self):
         if self.reloadstate <= 0 and self.batterylevel > settings['Player.kJ/shot'].val:
-            self.reloadstate += FPS * settings['Player.reload'].val
+            self.reloadstate += settings['Game.FPS'].val * settings['Player.reload'].val
             self.batterylevel -= settings['Player.kJ/shot'].val
             self.game.bullets.add(Bullet(self))
 
@@ -156,8 +86,8 @@ class Player(Body):
         energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
 
         if self.batterylevel > energyNeeded:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * TIME_PER_FRAME / self.mass * finefactor, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * TIME_PER_FRAME / self.mass * finefactor, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * simulation_time_step / self.mass * finefactor, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * simulation_time_step / self.mass * finefactor, self.angle)
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):
@@ -189,7 +119,7 @@ class Player(Body):
                 game.playerDied(other=False)
             return
 
-        if self.reloadstate > FPS * settings['Player.reload'].val * settings['Player.minreload'].val:
+        if self.reloadstate > settings['Game.FPS'].val * settings['Player.reload'].val * settings['Player.minreload'].val:
             self.reloadstate -= 1
 
         if self.bot is not None:
@@ -207,8 +137,7 @@ class Player(Body):
             elif botlib.Action.ROTATE_LEFT in actions:
                 self.rotate(1, False)
 
-        # It is assumed that the 'towards' object is at a fixed position (a gravity well). It will not be updated according to forces felt
-        separation = Body.advance(self)
+        separation = self.advance()
 
         if separation < ((self.spr.rect.width / 2) + (self.spr.rect.height / 2)) / 2:
             if game.singleplayer and self == game.players[1]:
@@ -259,7 +188,7 @@ class Game:
         # other: did the other player die or did we die?
         global statusmessage
 
-        self.state = STATE_DEAD
+        self.state = GameState.DEAD
 
         if both:
             self.roundscore = 1
@@ -308,7 +237,7 @@ class Game:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setblocking(0)
         self.sock.sendto(mplib.clienthello, server)  # using sendtoQueued() here makes recvfrom() give an error on Windows
-        self.state = STATE_HELLOSENT
+        self.state = GameState.HELLOSENT
         statusmessage = 'Waiting for server initial response...'
 
     def sendto(self):
@@ -344,13 +273,13 @@ class Game:
     def processIncomingPacket(self, msg):
         global statusmessage
 
-        if self.state == STATE_HELLOSENT:
+        if self.state == GameState.HELLOSENT:
             if msg[0 : len(mplib.serverhello)] != mplib.serverhello:
                 statusmessage = 'Server protocol error, please restart the game.'
             else:
                 mptoken = msg[len(mplib.serverhello) : ]
                 self.sendtoQueued(mptoken)
-                self.state = STATE_TOKENSENT
+                self.state = GameState.TOKENSENT
                 statusmessage = 'Completing server handshake...'
 
                 self.newRound()
@@ -359,13 +288,13 @@ class Game:
                 self.players[0].seqno += 1
 
 
-        elif self.state == STATE_TOKENSENT:
+        elif self.state == GameState.TOKENSENT:
             if msg == mplib.urplayerone:
                 statusmessage = 'Server connection established. Waiting for another player to join this server...'
                 self.players[0].n = 1
                 self.players[1].n = 2
             elif msg == mplib.playerfound:
-                self.state = STATE_MATCHED
+                self.state = GameState.MATCHED
                 reply = mplib.settingsmsg + Setting.serializeSettings(settings)
                 self.sock.sendto(reply, SERVER)
                 self.sock.sendto(reply, ('127.0.0.1', self.sock.getsockname()[1]))  # also send it to ourselves
@@ -373,18 +302,20 @@ class Game:
                 statusmessage = 'Server found a match! Waiting for the other player to send game data...'
                 self.players[0].n = 2
                 self.players[1].n = 1
-                self.state = STATE_MATCHED
+                self.state = GameState.MATCHED
             else:
                 statusmessage = 'Server protocol error, please restart the game.'
                 print('Got from server:', msg)
 
-        elif self.state == STATE_MATCHED:
+        elif self.state == GameState.MATCHED:
             if msg[ : len(mplib.settingsmsg)] != mplib.settingsmsg:
                 print('Waiting for initial setup data, got this instead: ', msg)
                 return
 
             # TODO this needs some way of resetting between rounds
             Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
+
+            update_fps()
 
             gravitywell.setImage(settings['GW.imagenumber'].val)
             self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
@@ -395,16 +326,16 @@ class Game:
             self.players[self.players[1].n - 1].mass = settings['Player.mass'].val
 
             self.players[0].draw(screen)  # updates the sprite, which also does collision detection, to prevent collision on frame 0
-            self.state = STATE_PLAYERING
+            self.state = GameState.PLAYERING
             statusmessage = ''
 
-        elif self.state in (STATE_PLAYERING, STATE_DEAD):
+        elif self.state in (GameState.PLAYERING, GameState.DEAD):
             if msg.startswith(mplib.playerquits):
                 reason = msg[len(mplib.playerquits) : ]
                 if reason == mplib.restartpl0x:
                     statusmessage += ' The other player restarted!'
                 else:
-                    if self.state == STATE_PLAYERING:
+                    if self.state == GameState.PLAYERING:
                         statusmessage = 'You win with score ' + str(self.score) + '! The other player ' + str(reason, 'ASCII')
                     else:
                         statusmessage = 'The other player ' + str(reason, 'ASCII') + '. Your score was: ' + str(self.score)
@@ -479,7 +410,7 @@ class Game:
 
     def schedulePing(self):
         # game step countdown
-        self.nextPingAt = random.randint(int(FPS * (prefs['Multiplayer.pinginterval'] / 2)), int(FPS * (prefs['Multiplayer.pinginterval'] * 2)))
+        self.nextPingAt = random.randint(int(settings['Game.FPS'].val * (prefs['Multiplayer.pinginterval'] / 2)), int(settings['Game.FPS'].val * (prefs['Multiplayer.pinginterval'] * 2)))
         self.pingSentAt = None
 
     def recvFromNetwork(self):
@@ -493,72 +424,6 @@ class Game:
                 break  # no (more) data from the network
             else:
                 self.processIncomingPacket(msg)
-
-
-class GravityWell:
-    def __init__(self):
-        self.image = None
-
-    def setImage(self, imagenumber):
-        if prefs['Game.simple_graphics']:
-            return
-
-        try:
-            if imagenumber == 1:
-                self.image = pygame.image.load('res/yellow-sphere.png').convert_alpha()
-                self.frames = None
-            elif imagenumber == 2:
-                self.image = pygame.image.load('res/sun.png').convert_alpha()
-                self.frames = None
-            elif imagenumber == 3:
-                self.frames = loadGIF('res/earth-scaled-fixedforPIL.gif')
-                self.image = self.frames[0]
-            elif imagenumber == 4:
-                self.image = pygame.image.load("res/that's-no-moon.png").convert_alpha()
-                self.frames = None
-            else:
-                print('Note: GravityWell image number', imagenumber, 'was requested but we do not have it.')
-
-            self.framecounter = 0  # in case it needs resetting
-            # 1px on either side for fuzzy/semi-transparent borders
-            GWwidth = roundi((settings['GW.radius'].val + 1) * 2)
-            if self.image.get_rect().width != GWwidth:
-                wh = (GWwidth, GWwidth)  # since it's spherical... width,height == width,width
-                if self.frames is not None:
-                    for i, frame in enumerate(self.frames):
-                        self.frames[i] = pygame.transform.scale(frame, wh)
-                else:
-                    self.image = pygame.transform.scale(self.image, wh)
-
-            if self.frames is not None:
-                self.image = self.frames[0]
-        except Exception as e:  # might fail if PIL is not installed and a GIF was requested. Not bad, just use the default...
-            print('Warning:', type(e).__name__, 'while loading GW image')
-            return
-
-    def animationStep(self):
-        if self.frames is None:
-            return
-
-        self.framecounter += 1
-        self.framecounter %= len(self.frames) * 8
-        self.image = self.frames[self.framecounter // 8]
-
-
-def gravity(obj1pos, obj2pos, obj1mass, obj2mass):
-    separation_x = obj1pos.x - obj2pos.x
-    separation_y = obj1pos.y - obj2pos.y
-    separation_square = (separation_x * separation_x) + (separation_y * separation_y)
-    grav_accel = obj1mass * obj2mass / separation_square * (TIME_PER_FRAME * GRAVITYCONSTANT)
-    separation = math.sqrt(separation_square)
-    dir_x = separation_x / separation
-    dir_y = separation_y / separation
-    return grav_accel / obj1mass * dir_x, grav_accel / obj1mass * dir_y, separation
-
-
-def roundi(n):  # because pygame wants an int and round() returns a float for some reason but int() drops the fractional part... pain in the bum, here's a shortcut...
-    return int(round(n))
-
 
 
 def quitProgram(reason, exitstatus=0):
@@ -598,25 +463,8 @@ def initSinglePlayer():
     game.players[1].mass = settings['Player.mass'].val
     game.players[1].draw(screen)
     game.newRound()
-    game.state = STATE_PLAYERING
+    game.state = GameState.PLAYERING
     gravitywell.setImage(settings['GW.imagenumber'].val)
-
-
-def loadGIF(filename):
-    global imported_PIL, Image, ImageSequence
-
-    if not imported_PIL:
-        from PIL import Image, ImageSequence
-        imported_PIL = True
-
-    # Function ©Rabbid76, <https://stackoverflow.com/a/64668964/1201863>, CC BY-SA
-    img = Image.open(filename)
-    frames = []
-    for frame in ImageSequence.Iterator(img):
-        frame = frame.convert('RGBA')
-        pygameImage = pygame.image.fromstring(frame.tobytes(), frame.size, frame.mode).convert_alpha()
-        frames.append(pygameImage)
-    return frames
 
 
 def coordsToPx(x, y):
@@ -655,20 +503,7 @@ For running a server, see `server.py`.
     return args
 
 
-GRAVITYCONSTANT = 6.6742e-11
 SCREENSIZE = (1900, 980)
-FPS = 60
-
-FRAMETIME = 1 / FPS
-TIME_PER_FRAME = FRAMETIME * settings['Game.speed'].val
-ZEROVECTOR = pygame.math.Vector2(0, 0)
-
-STATE_INITIAL   = 0
-STATE_HELLOSENT = 1
-STATE_TOKENSENT = 2
-STATE_MATCHED   = 3
-STATE_PLAYERING = 4
-STATE_DEAD      = 5
 
 args = parseArgs(sys.argv)
 
@@ -679,7 +514,6 @@ pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 fpslimiter = pygame.time.Clock()
 screen = pygame.display.set_mode(SCREENSIZE)
-imported_PIL = False
 statusmessage = ''
 
 if not args['singleplayer']:
@@ -689,8 +523,6 @@ if not args['singleplayer']:
         SERVER = prepareHostAndPort(args['server'])
     else:
         SERVER = prepareHostAndPort(prefs['Multiplayer.server'])
-
-Spark.IMAGE = pygame.image.load(prefs['Spark.graphic']).convert_alpha()
 
 if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
     bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
@@ -703,6 +535,8 @@ if game.singleplayer:
     initSinglePlayer()
 else:
     game.connect(SERVER)
+
+update_fps()
 
 while True:
     if not game.singleplayer:
@@ -728,7 +562,7 @@ while True:
         screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val - 1, -settings['GW.radius'].val - 1))
         gravitywell.animationStep()
 
-    if game.state == STATE_PLAYERING:
+    if game.state == GameState.PLAYERING:
         fineMode = keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT]
 
         game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], fineMode)
@@ -741,7 +575,7 @@ while True:
 
         removebullets = []
         for bullet in game.bullets:
-            died = bullet.advance()
+            died = bullet.advance(SCREENSIZE)
             if died:
                 removebullets.append(bullet)
         for bullet in removebullets:
@@ -760,9 +594,11 @@ while True:
 
         removesparks = []
         for spark in game.sparks:
-            died = spark.updateAndDraw(screen)
+            died = spark.advance(screen)
             if died:
                 removesparks.append(spark)
+            else:
+                screen.blit(spark.img, coordsToPx(roundi(spark.pos.x), roundi(spark.pos.y)))
         for spark in removesparks:
             game.sparks.remove(spark)
 
@@ -815,16 +651,16 @@ while True:
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
-            for i in range(int(prefs['Game.aim_guide_distance'] * FPS / settings['Game.speed'].val)):
+            for i in range(int(prefs['Game.aim_guide_distance'] * settings['Game.FPS'].val / settings['Game.speed'].val)):
                 oldpos = pygame.math.Vector2(b.pos)
-                died = b.advance()
+                died = b.advance(SCREENSIZE)
                 if died:
                     break
                 pygame.draw.line(screen, prefs['Game.aim_guide_color'], coordsToPx(*oldpos), coordsToPx(*b.pos))
 
 
         game.sendUpdatePacket()
-    elif game.state == STATE_DEAD:
+    elif game.state == GameState.DEAD:
         if keystates[pygame.K_RETURN]:
             if game.singleplayer:
                 initSinglePlayer()
@@ -841,7 +677,7 @@ while True:
     game.framecounter += 1
 
     pygame.display.flip()
-    frametime = fpslimiter.tick(FPS)
-    if frametime * 0.9 > FRAMETIME * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
+    frametime = fpslimiter.tick(settings['Game.FPS'].val)
+    if frametime * 0.9 > frame_time_budget * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
         print('frametime was', frametime)
 
