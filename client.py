@@ -347,11 +347,12 @@ class Game:
                     if seqno - 1 != self.players[1].seqno:
                         print('Info: jitter or loss. Received seqno', seqno, ' whereas the last seqno for this player was', self.players[1].seqno)
                     self.players[1].seqno = seqno
-                    self.players[1].angle = angle * 1.5
                     self.players[1].pos = pygame.math.Vector2(x, y)
                     self.players[1].speed = pygame.math.Vector2(xspeed / 100, yspeed / 100)
                     self.players[1].batterylevel = batlvl / 255 * settings['Player.battSize'].val
                     self.players[1].health = health / 255
+                    self.players[1].angle = angle * 1.5
+                    self.players[1].updateRotatedSprite()
 
                     if hitsfromtheirbullets > 0:
                         self.players[0].health = max(0, self.players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
