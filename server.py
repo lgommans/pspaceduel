@@ -90,6 +90,12 @@ while True:
 
             elif clients[addr]['state'] == STATE_MARRIED_A_PLAYER:
                 sock.sendto(msg, clients[addr]['partner'])
+
+    except KeyboardInterrupt:
+        # TODO would be cool if we could notify clients that the server is quitting
+        # though I'd currently assume that the clients also run, or coordinate with whomever is running, the server
+        break
+
     except Exception as e:
         print('{} in {} line {}'.format(
                 type(e).__name__,
