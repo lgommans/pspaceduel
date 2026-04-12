@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # TODO add bullet accuracy statistics
-# TODO if you die on someone's spawn position then you collide on the first frame
 
 import sys, os, math, time, random, socket, threading, importlib
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'  # suppresses "Hello from the pygame community. <url>" every time you run the binary. Not to hide that we're using pygame, of course, but I regularly look at the output and this is additional clutter
@@ -14,13 +13,6 @@ from src.body import Body
 from src.gravity_well import GravityWell
 from src.bullet import Bullet
 from src.game_state import GameState
-
-def update_fps():
-    global frame_time_budget, simulation_time_step
-
-    frame_time_budget = 1 / settings['Game.FPS'].val
-    simulation_time_step = frame_time_budget * settings['Game.speed'].val
-
 
 class Player(Body):
     def __init__(self, n, bot=None):
@@ -87,8 +79,8 @@ class Player(Body):
         energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
 
         if self.batterylevel > energyNeeded:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * simulation_time_step / self.mass * finefactor, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * simulation_time_step / self.mass * finefactor, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * settings['Game.speed'].val / self.mass * finefactor, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * settings['Game.speed'].val / self.mass * finefactor, self.angle)
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):
@@ -169,6 +161,7 @@ class Player(Body):
 
         self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
+        # TODO do this in the game object or even global scope! Not once for each player o.o
         if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
             game.playerDied(both=True)
@@ -324,8 +317,6 @@ class Game:
 
             # TODO this needs some way of resetting between rounds
             Setting.updateSettings(settings, msg[len(mplib.settingsmsg) : ])
-
-            update_fps()
 
             gravitywell.setImage(settings['GW.imagenumber'].val)
             self.players[self.players[0].n - 1].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
@@ -630,8 +621,6 @@ if game.singleplayer:
 else:
     game.connect(SERVER)
 
-update_fps()
-
 while True:
     if not game.singleplayer:
         game.recvFromNetwork()
@@ -760,7 +749,7 @@ while True:
 
         if prefs['Game.show_aim_guide']:
             b = Bullet(game.players[0], virtual=True)
-            for i in range(int(prefs['Game.aim_guide_distance'] * settings['Game.FPS'].val / settings['Game.speed'].val)):
+            for i in range(int(prefs['Game.aim_guide_distance'] * settings['Game.FPS'].val)):
                 oldpos = pygame.math.Vector2(b.pos)
                 died = b.advance(SCREENSIZE)
                 if died:
@@ -789,6 +778,6 @@ while True:
 
     pygame.display.flip()
     frametime = fpslimiter.tick(settings['Game.FPS'].val)
-    if frametime * 0.9 > frame_time_budget * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
+    if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
         print('frametime was', frametime)
 

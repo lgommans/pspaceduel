@@ -10,8 +10,7 @@ class Body:
         self.speed = speed
         self.mass = mass
 
-        frame_time_budget = 1 / settings['Game.FPS'].val
-        self.simulation_time_step = frame_time_budget * settings['Game.speed'].val
+        self.simulation_time_step = settings['Game.speed'].val
 
     def advance(self):
         # does 2-body Newtonian gravity between itself and the GravityWell

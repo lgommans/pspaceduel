@@ -1,7 +1,7 @@
 
 '''
   Hello! This is your settings file speaking. Yes, I know. Please remain calm. You are OK.
-  
+
   This file contains two kinds of parameters:
 
     - User preferences: the 'prefs' list below.
@@ -43,10 +43,10 @@ prefs = {
     # The color of the line
     'Game.aim_guide_color': ( 80, 190,  20),
     # How long should the aim guide be? Measured in seconds, i.e. how far a bullet flies in 2 seconds (you might liken it to the 'light year' distance unit!)
-    'Game.aim_guide_distance': 2,
+    'Game.aim_guide_distance': 1.5,
 
     # Degrees you rotate per game step while holding down the left or right arrow key. Each degree requires a certain amount of energy so changing the value will not impact your energy consumption.
-    'Player.rotate_speed':      4,  
+    'Player.rotate_speed':      5,
     # Same, but while holding Shift + arrow left or right.
     'Player.rotate_speed_fine': 1,
 
@@ -90,16 +90,16 @@ prefs = {
 ###
 settings = {
     # How fast the game runs (how much time is simulated every frame)
-    'Game.speed':      Setting(   0.3, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Game.speed':      Setting(   0.1, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
     # Number of frames per second
     'Game.FPS':        Setting(  60,   'H'),
 
     # How much damage a single hit incurs
     'Bullet.damage':   Setting(   0.06,'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
-    'Bullet.mass':     Setting(   0.5, 'B', lambda n: int(round(n * 255)), lambda n: n / 255), 
+    'Bullet.mass':     Setting(   5,   'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
-    'Bullet.speed':    Setting(   7,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
+    'Bullet.speed':    Setting(  50,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
     'Bullet.relspeed': Setting(True,   'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
@@ -113,12 +113,12 @@ settings = {
     'Player1.x':       Setting(-300,   'h'),
     'Player1.y':       Setting(   0,   'h'),
     'Player1.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player1.yspeed':  Setting(   2.72,'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player1.yspeed':  Setting(  15,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Start x and y, and initial speed, of player 2
     'Player2.x':       Setting( 300,   'h'),
     'Player2.y':       Setting(   0,   'h'),
     'Player2.xspeed':  Setting(   0,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
-    'Player2.yspeed':  Setting(  -2.72,'h', lambda n: int(round(n * 100)), lambda n: n / 100),
+    'Player2.yspeed':  Setting( -15,   'h', lambda n: int(round(n * 100)), lambda n: n / 100),
     # Battery capacity for each player (kilojoules)
     'Player.battSize': Setting( 180,   'H'),
     # Strength of the players' engine (Newtons)
@@ -131,7 +131,7 @@ settings = {
     # How many kJ does a single shot take?
     'Player.kJ/shot':  Setting(  12,   'B'),
     # Weight of the spacecraft (kilograms)
-    'Player.mass':     Setting( 100,   'B'),
+    'Player.mass':     Setting( 225,   'B'),
     # Time required to reload the craft (seconds)
     'Player.reload':   Setting(   0.5, 'B', lambda n: int(round(n * 100)), lambda n: n / 100),
     # How much can the craft prepare a next shot to shoot faster bursts? Value multiplied with Player.reload, so -0.5 with Player.reload of 0.1 will be 'negative' 0.05 seconds reload state
@@ -140,7 +140,7 @@ settings = {
     # The Gravity Well (GW) is the heavy object in the middle. Here you can configure whether it appears as a star (such as the Sun) or a planet or so.
     'GW.imagenumber':  Setting(   4,   'B'),
     # Weight of the GW (kilograms)
-    'GW.mass':         Setting(2e15,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
+    'GW.mass':         Setting(1e15,   'H', lambda n: int(round(math.log(n, 1.1))), lambda n: pow(1.1, n)),
     # Maximum amount of radiative energy that can be picked up by the spacecraft per game step, considering its solar panel size and efficiency (kJ)
     'GW.radiation':    Setting(  16,   'B'),
     # Half of the diameter of the GW in pixels (it is always perfectly spherical even if its image can have protrusions)
