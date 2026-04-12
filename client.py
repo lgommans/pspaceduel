@@ -407,7 +407,7 @@ class Game:
             self.nextPingAt -= 1
             if self.nextPingAt <= 0:
                 self.sendtoQueued(b'\x02')
-                pingSentAt = time.time()
+                self.pingSentAt = time.time()
 
     def schedulePing(self):
         # game step countdown
