@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 
-import socket, os, hashlib, time
-import src.mplib as mplib
+"""
+Welcome to the PSpaceDuel server!
 
-def genToken():
-    return hashlib.sha256(os.urandom(12)).digest()[0 : 12]
+You can find some variables like PORT and BINDIP below.
+Feel free to customise :)
 
+There are no dynamic arguments, just run ./server.py
+"""
 
 PORT = 9473
 BINDIP = '0.0.0.0'
 MAXPLAYERS = 100
 PLAYERTIMEOUT = 600
+
+import socket, os, hashlib, time
+import src.mplib as mplib
 
 STATE_POLITELY_GREETED = 1
 STATE_SHOWN_WORTHINESS = 2
@@ -19,11 +24,16 @@ STATE_MARRIED_A_PLAYER = 3
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind((BINDIP, PORT))
+print('Listening on', (BINDIP, PORT))
 
 clients = {}
 
+def genToken():
+    return hashlib.sha256(os.urandom(12)).digest()[0 : 12]
+
+
 while True:
-    try:  # wrap this whole thing in a try so bugs are not immediately fatal
+    try:  # wrap this whole thing in a try-except so that bugs are not immediately fatal
         msg, addr = sock.recvfrom(mplib.maximumsize)
 
         timed_out = [client for client in clients if clients[client]['lastseen'] < time.time() - PLAYERTIMEOUT]
