@@ -89,10 +89,10 @@ prefs = {
 # TODO explain how to change the setting and to leave the lambda etc. alone
 ###
 settings = {
-    # How fast the game runs (how much time is simulated every frame)
-    'Game.speed':      Setting(   0.1, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
     # Number of frames per second
     'Game.FPS':        Setting(  60,   'H'),
+    # How much time is simulated every frame
+    'Game.timeStep':      Setting(   0.1, 'H', lambda n: int(round(n * 255)), lambda n: n / 255),
 
     # How much damage a single hit incurs
     'Bullet.damage':   Setting(   0.06,'B', lambda n: int(round(n * 255)), lambda n: n / 255),

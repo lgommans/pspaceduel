@@ -79,8 +79,8 @@ class Player(Body):
         energyNeeded = settings['Player.thrust'].val / settings['Player.thrust/kJ'].val * finefactor
 
         if self.batterylevel > energyNeeded:
-            self.speed.x += lengthdir_x(settings['Player.thrust'].val * settings['Game.speed'].val / self.mass * finefactor, self.angle)
-            self.speed.y += lengthdir_y(settings['Player.thrust'].val * settings['Game.speed'].val / self.mass * finefactor, self.angle)
+            self.speed.x += lengthdir_x(settings['Player.thrust'].val * settings['Game.timeStep'].val / self.mass * finefactor, self.angle)
+            self.speed.y += lengthdir_y(settings['Player.thrust'].val * settings['Game.timeStep'].val / self.mass * finefactor, self.angle)
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):
@@ -178,7 +178,7 @@ class Game:
         self.roundscore = 0
         self.players = players
         self.roundRestartTime = roundRestartTime
-        self.roundRestartCounter = None
+        self.roundRestartAt = None
 
         if not singleplayer:
             self.stopSendtoThread = False
@@ -204,7 +204,7 @@ class Game:
         global statusmessage
 
         self.state = GameState.DEAD
-        self.roundRestartCounter = self.roundRestartTime * settings['Game.FPS'].val
+        self.roundRestartAt = time.time() + self.roundRestartTime
 
         if both:
             self.roundscore = 1
@@ -430,8 +430,7 @@ class Game:
     def update(self):
         global statusmessage
         if self.state == GameState.DEAD and self.players[0].bot and self.players[1].bot:
-            self.roundRestartCounter -= 1
-            if self.roundRestartCounter < 0:
+            if self.roundRestartAt <= time.time():
                 self.initSinglePlayer()
                 statusmessage = ''
 
@@ -503,10 +502,11 @@ Usage:
        Play a game offline.
        If you do not specify a bot name, one will be chosen at random.
 
-    {me} --zeroplayer [delay=1] [FPS=default] [bot_name_1] [bot_name_2]
+    {me} --zeroplayer [delay=1] [speed=1] [bot_name_1] [bot_name_2]
        Watch two bots play, waiting 'delay' seconds between rounds.
        If you do not specify a delay, one second will be used.
-       If you do not specify a frame rate, the default will be used.
+       If you do not specify a a speed, the default will be used.
+       A special string "inf", for infinity, is accepted as speed.
        Bots whose name you do not specify will be chosen at random.
 
     {me} --list-bots
@@ -536,6 +536,7 @@ For running a server, see `server.py`.
         'server':       None,
         'bot_names':    [],
         'round_delay':  1,
+        'speed':        1,
     }
 
     if '--singleplayer' in argv:
@@ -548,7 +549,10 @@ For running a server, see `server.py`.
         if len(argv) > 2:
             args['round_delay'] = float(argv[2])
         if len(argv) > 3:
-            args['FPS'] = int(argv[3])
+            if argv[3] == 'inf':
+                args['speed'] = float('inf')
+            else:
+                args['speed'] = float(argv[3])
         if len(argv) > 4:
             args['bot_names'].append(BOTS_DIRECTORY + '.' + argv[4])
         if len(argv) > 5:
@@ -587,9 +591,6 @@ if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not No
 
 players = []
 if args['zeroplayer']:
-    if 'FPS' in args:
-        settings['Game.FPS'].val = args['FPS']
-
     while len(args['bot_names']) < 2:
         bot_name = random.choice(list(bot_list_iterator()))
         print('Choosing bot:', bot_name)
@@ -777,7 +778,8 @@ while True:
     game.framecounter += 1
 
     pygame.display.flip()
-    frametime = fpslimiter.tick(settings['Game.FPS'].val)
-    if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
-        print('frametime was', frametime)
+    if args['speed'] < float('inf'):
+        frametime = fpslimiter.tick(settings['Game.FPS'].val / args['speed'])
+        if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
+            print('frametime was', frametime)
 
