@@ -23,7 +23,7 @@ def update_fps():
 
 
 class Player(Body):
-    def __init__(self, n, game, bot=None):
+    def __init__(self, n, bot=None):
         """
         Parameters:
           n: the player number (int)
@@ -39,7 +39,6 @@ class Player(Body):
         rect = img.get_rect()
 
         self.n = n
-        self.game = game
         self.seqno = 0
 
         self.img = pygame.transform.scale(img, (roundi(rect.width * settings['Player.scale'].val), roundi(rect.height * settings['Player.scale'].val)))
@@ -65,6 +64,8 @@ class Player(Body):
         self.reloadstate = 0
         self.hitsdealt = 0
         self.seqno = 0
+        if self.pos:
+            self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
         self.updateRotatedSprite()
         if self.bot is not None:
             self.bot.reset(self)
@@ -73,7 +74,7 @@ class Player(Body):
         if self.reloadstate <= 0 and self.batterylevel > settings['Player.kJ/shot'].val:
             self.reloadstate += settings['Game.FPS'].val * settings['Player.reload'].val
             self.batterylevel -= settings['Player.kJ/shot'].val
-            self.game.bullets.add(Bullet(self))
+            return Bullet(self)
 
     def thrust(self, fine=False):
         # TODO animation? Or leave the ion engine exhaust invisible?
@@ -91,12 +92,10 @@ class Player(Body):
             self.batterylevel -= energyNeeded
 
     def draw(self, screen):
-        self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
-
         new_rect = self.rotated_image.get_rect(center=coordsToPx(*self.pos))
         screen.blit(self.rotated_image, new_rect)
 
-    def rotate(self, direction, fine=False):  # direction is 1 or -1
+    def rotate(self, direction, fine=False):  # direction is 1 for left, or -1 for right
         if direction == 0:
             return
 
@@ -112,15 +111,16 @@ class Player(Body):
         self.spr.mask = pygame.mask.from_surface(self.rotated_image)
 
     def perform_actions(self, actions=None):
-        if self.bot is not None:
-            actions = self.bot.step(self.game)
+        new_bullet = None
 
         if botlib.Action.THRUST in actions:
             self.thrust(fine=False)
         elif botlib.Action.THRUST_FINE in actions:
             self.thrust(fine=True)
+
         if botlib.Action.SHOOT in actions:
-            self.tryShoot()
+            new_bullet = self.tryShoot()
+
         if botlib.Action.ROTATE_LEFT_FINE in actions:
             self.rotate(1, fine=True)
         elif botlib.Action.ROTATE_RIGHT_FINE in actions:
@@ -130,8 +130,11 @@ class Player(Body):
         elif botlib.Action.ROTATE_LEFT in actions:
             self.rotate(1, fine=False)
 
+        return new_bullet
+
     def update(self):  # this function should only be run on the local player while in multiplayer mode, since it calls playerDied which triggers network events
         if self.health <= 0:
+            # TODO return if we died or something instead of accessing the game instance in the global scope
             if game.singleplayer and self == game.players[1]:
                 game.playerDied(other=True)
             else:
@@ -164,6 +167,8 @@ class Player(Body):
             self.pos.y = settings['Player.visiblepx'].val - (SCREENSIZE[1] / 2)
             self.pos.x = -self.pos.x
 
+        self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
+
         if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
             # If you run into each other, you both die. Should have run, you fools
             game.playerDied(both=True)
@@ -173,12 +178,14 @@ class Player(Body):
 
 
 class Game:
-    def __init__(self, singleplayer):
+    def __init__(self, players, singleplayer, roundRestartTime):
         self.singleplayer = singleplayer
 
         self.score = 0
         self.roundscore = 0
-        self.players = []
+        self.players = players
+        self.roundRestartTime = roundRestartTime
+        self.roundRestartCounter = None
 
         if not singleplayer:
             self.stopSendtoThread = False
@@ -188,16 +195,28 @@ class Game:
 
         self.newRound()
 
+    def perform_actions(self, player_actions):
+        for i, player in enumerate(self.players):
+            if i == 0 and player.bot is None:
+                new_bullet = player.perform_actions(player_actions)
+            elif player.bot is not None:
+                actions = player.bot.step(self)
+                new_bullet = player.perform_actions(actions)
+
+            if new_bullet:
+                self.bullets.add(new_bullet)
+
     def playerDied(self, other=False, both=False, sendpacket=True):
         # other: did the other player die or did we die?
         global statusmessage
 
         self.state = GameState.DEAD
+        self.roundRestartCounter = self.roundRestartTime * settings['Game.FPS'].val
 
         if both:
             self.roundscore = 1
             statusmessage = 'You tied: 1 point! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
-            if not game.singleplayer and sendpacket:
+            if not self.singleplayer and sendpacket:
                 self.sendtoQueued(b'\x01\x01')
         else:
             if other:
@@ -206,7 +225,7 @@ class Game:
             else:
                 self.roundscore = 0
                 statusmessage = 'You died. Your score: ' + str(self.score) + '. Press Enter to restart.'
-                if not game.singleplayer and sendpacket:
+                if not self.singleplayer and sendpacket:
                     self.sendtoQueued(b'\x01')
 
     def newRound(self):
@@ -218,21 +237,8 @@ class Game:
         self.remotebullets = []
         self.roundscore = 0
         self.framecounter = 0
-        if len(self.players) > 0:
-            self.players[0].reset()
-            self.players[1].reset()
-
-    def initPlayers(self):
-        if len(self.players) > 0:
-            print('Already initialized players')
-            return
-
-        self.players = [
-            Player(1, self, bot=None),
-            Player(2, self, bot='bots.random'),
-        ]
-        self.players[0].reset()
-        self.players[1].reset()
+        for player in players:
+            player.reset()
 
     def connect(self, server):
         global statusmessage
@@ -430,6 +436,27 @@ class Game:
             else:
                 self.processIncomingPacket(msg)
 
+    def update(self):
+        global statusmessage
+        if self.state == GameState.DEAD and self.players[0].bot and self.players[1].bot:
+            self.roundRestartCounter -= 1
+            if self.roundRestartCounter < 0:
+                self.initSinglePlayer()
+                statusmessage = ''
+
+
+    def initSinglePlayer(self):
+        self.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
+        self.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
+        self.players[0].mass = settings['Player.mass'].val
+        self.players[0].reset()
+        self.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
+        self.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
+        self.players[1].mass = settings['Player.mass'].val
+        self.players[1].reset()
+        self.newRound()
+        self.state = GameState.PLAYERING
+
 
 def quitProgram(reason, exitstatus=0):
     if not game.singleplayer:
@@ -458,36 +485,41 @@ def prepareHostAndPort(hostAndPort, defaultport=9473):
     return (ip, port)
 
 
-def initSinglePlayer():
-    game.players[0].pos = pygame.math.Vector2(settings['Player1.x'].val, settings['Player1.y'].val)
-    game.players[0].speed = pygame.math.Vector2(settings['Player1.xspeed'].val, settings['Player1.yspeed'].val)
-    game.players[0].mass = settings['Player.mass'].val
-    game.players[0].draw(screen)  # updates the sprite position to avoid a collision with player 2
-    game.players[1].pos = pygame.math.Vector2(settings['Player2.x'].val, settings['Player2.y'].val)
-    game.players[1].speed = pygame.math.Vector2(settings['Player2.xspeed'].val, settings['Player2.yspeed'].val)
-    game.players[1].mass = settings['Player.mass'].val
-    game.players[1].draw(screen)
-    game.newRound()
-    game.state = GameState.PLAYERING
-    gravitywell.setImage(settings['GW.imagenumber'].val)
-
-
 def coordsToPx(x, y):
     return (x + (SCREENSIZE[0] // 2), y + (SCREENSIZE[1] // 2))
 
+
+def bot_list_iterator():
+    with os.scandir(BOTS_DIRECTORY) as directory:
+        for entry in directory:
+            if not entry.is_file() or not entry.name.endswith('.py'):
+                continue
+            yield entry.name[ : -3]
 
 def parseArgs(argv):
     if '-h' in argv or '--help' in argv:
         print('''
 Usage:
     {me}
-       Play the game online with default settings.
+       Play the game online on the default server.
+
     {me} <hostname>
-       Connect to a different server.
     {me} <hostname:port>
-       Connect to a different server at a specific port.
-    {me} --singleplayer
-       Play a dummy game offline. Mainly for testing purposes.
+       Connect to a different server.
+       Supplying a port number is optional.
+
+    {me} --singleplayer [bot_name]
+       Play a game offline.
+       If you do not specify a bot name, one will be chosen at random.
+
+    {me} --zeroplayer [delay=1] [FPS=default] [bot_name_1] [bot_name_2]
+       Watch two bots play, waiting 'delay' seconds between rounds.
+       If you do not specify a delay, one second will be used.
+       If you do not specify a frame rate, the default will be used.
+       Bots whose name you do not specify will be chosen at random.
+
+    {me} --list-bots
+       List valid bot names.
 
 For settings, see `settings.py`.
 For how to play, see `README.txt`.
@@ -495,19 +527,49 @@ For running a server, see `server.py`.
 '''.lstrip().format(me=os.path.basename(argv[0])))
         sys.exit(1)
 
+    if '--list-bots' in argv:
+        print(f'Bots directory: "{BOTS_DIRECTORY}"')
+        first = True
+        for bot_name in bot_list_iterator():
+            if first:
+                print(f'The following bot names are found:')
+                first = False
+            print(bot_name)
+        if first:
+            print('No bots were found in the directory.')
+        sys.exit(0)
+
     args = {
+        'zeroplayer':   False,
         'singleplayer': False,
         'server':       None,
+        'bot_names':    [],
+        'round_delay':  1,
     }
 
     if '--singleplayer' in argv:
         args['singleplayer'] = True
+        if len(argv) > 2:
+            args['bot_names'].append(BOTS_DIRECTORY + '.' + argv[2])
+    elif '--zeroplayer' in argv:
+        args['singleplayer'] = True
+        args['zeroplayer'] = True
+        if len(argv) > 2:
+            args['round_delay'] = float(argv[2])
+        if len(argv) > 3:
+            args['FPS'] = int(argv[3])
+        if len(argv) > 4:
+            args['bot_names'].append(BOTS_DIRECTORY + '.' + argv[4])
+        if len(argv) > 5:
+            args['bot_names'].append(BOTS_DIRECTORY + '.' + argv[5])
     elif len(argv) == 2:
         args['server'] = argv[1]
 
     return args
 
 
+# TODO put this in the config file somewhere
+BOTS_DIRECTORY = 'bots'
 SCREENSIZE = (1900, 980)
 
 args = parseArgs(sys.argv)
@@ -532,12 +594,39 @@ if not args['singleplayer']:
 if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
     bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
 
-game = Game(singleplayer=args['singleplayer'])
-game.initPlayers()
+players = []
+if args['zeroplayer']:
+    if 'FPS' in args:
+        settings['Game.FPS'].val = args['FPS']
+
+    while len(args['bot_names']) < 2:
+        bot_name = random.choice(list(bot_list_iterator()))
+        print('Choosing bot:', bot_name)
+        args['bot_names'].append(BOTS_DIRECTORY + '.' + bot_name)
+
+    players.append(Player(1, bot=args["bot_names"][0]))
+    players.append(Player(2, bot=args["bot_names"][1]))
+
+elif args['singleplayer']:
+    if len(args['bot_names']) == 0:
+        bot_name = random.choice(list(bot_list_iterator()))
+        print('Choosing bot:', bot_name)
+        args['bot_names'].append(BOTS_DIRECTORY + '.' + bot_name)
+
+    players.append(Player(1, bot=None))
+    players.append(Player(2, bot=args["bot_names"][0]))
+
+else:
+    players.append(Player(1, bot=None))
+    players.append(Player(2, bot=None))
+
+game = Game(players, singleplayer=args['singleplayer'], roundRestartTime=args['round_delay'])
+
 gravitywell = GravityWell()
 
 if game.singleplayer:
-    initSinglePlayer()
+    game.initSinglePlayer()
+    gravitywell.setImage(settings['GW.imagenumber'].val)
 else:
     game.connect(SERVER)
 
@@ -570,29 +659,28 @@ while True:
     if game.state == GameState.PLAYERING:
         actions = []
 
-        fine_mode = (keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
+        if not args['zeroplayer']:
+            fine_mode = (keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
 
-        if keystates[pygame.K_LEFT] and fine_mode:
-            actions.append(botlib.Action.ROTATE_LEFT_FINE)
-        elif keystates[pygame.K_LEFT] and not fine_mode:
-            actions.append(botlib.Action.ROTATE_LEFT)
+            if keystates[pygame.K_LEFT] and fine_mode:
+                actions.append(botlib.Action.ROTATE_LEFT_FINE)
+            elif keystates[pygame.K_LEFT] and not fine_mode:
+                actions.append(botlib.Action.ROTATE_LEFT)
 
-        if keystates[pygame.K_RIGHT] and fine_mode:
-            actions.append(botlib.Action.ROTATE_RIGHT_FINE)
-        elif keystates[pygame.K_RIGHT] and not fine_mode:
-            actions.append(botlib.Action.ROTATE_RIGHT)
+            if keystates[pygame.K_RIGHT] and fine_mode:
+                actions.append(botlib.Action.ROTATE_RIGHT_FINE)
+            elif keystates[pygame.K_RIGHT] and not fine_mode:
+                actions.append(botlib.Action.ROTATE_RIGHT)
 
-        if keystates[pygame.K_SPACE]:
-            actions.append(botlib.Action.SHOOT)
+            if keystates[pygame.K_SPACE]:
+                actions.append(botlib.Action.SHOOT)
 
-        if keystates[pygame.K_UP] and fine_mode:
-            actions.append(botlib.Action.THRUST_FINE)
-        elif keystates[pygame.K_UP] and not fine_mode:
-            actions.append(botlib.Action.THRUST)
+            if keystates[pygame.K_UP] and fine_mode:
+                actions.append(botlib.Action.THRUST_FINE)
+            elif keystates[pygame.K_UP] and not fine_mode:
+                actions.append(botlib.Action.THRUST)
 
-        game.players[0].perform_actions(actions)
-        if game.singleplayer:
-            game.players[1].perform_actions()
+        game.perform_actions(player_actions=actions)
 
         removebullets = []
         for bullet in game.bullets:
@@ -684,11 +772,13 @@ while True:
     elif game.state == GameState.DEAD:
         if keystates[pygame.K_RETURN]:
             if game.singleplayer:
-                initSinglePlayer()
+                game.initSinglePlayer()
                 statusmessage = ''
             else:
                 game.sock.sendto(mplib.playerquits + mplib.restartpl0x, SERVER)
                 game.connect(SERVER)
+
+    game.update()
 
     if len(statusmessage) > 0:
         msgpart = statusmessage[0 : int(time.time() * len(statusmessage)) % (len(statusmessage) * 2)]
