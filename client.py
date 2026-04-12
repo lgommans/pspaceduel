@@ -111,6 +111,25 @@ class Player(Body):
         self.rotated_image = pygame.transform.rotate(self.img, self.angle)
         self.spr.mask = pygame.mask.from_surface(self.rotated_image)
 
+    def perform_actions(self, actions=None):
+        if self.bot is not None:
+            actions = self.bot.step(self.game)
+
+        if botlib.Action.THRUST in actions:
+            self.thrust(fine=False)
+        elif botlib.Action.THRUST_FINE in actions:
+            self.thrust(fine=True)
+        if botlib.Action.SHOOT in actions:
+            self.tryShoot()
+        if botlib.Action.ROTATE_LEFT_FINE in actions:
+            self.rotate(1, fine=True)
+        elif botlib.Action.ROTATE_RIGHT_FINE in actions:
+            self.rotate(-1, fine=True)
+        elif botlib.Action.ROTATE_RIGHT in actions:
+            self.rotate(-1, fine=False)
+        elif botlib.Action.ROTATE_LEFT in actions:
+            self.rotate(1, fine=False)
+
     def update(self):  # this function should only be run on the local player while in multiplayer mode, since it calls playerDied which triggers network events
         if self.health <= 0:
             if game.singleplayer and self == game.players[1]:
@@ -121,21 +140,6 @@ class Player(Body):
 
         if self.reloadstate > settings['Game.FPS'].val * settings['Player.reload'].val * settings['Player.minreload'].val:
             self.reloadstate -= 1
-
-        if self.bot is not None:
-            actions = self.bot.step(self.game)
-            if botlib.Action.THRUST in actions:
-                self.thrust()
-            if botlib.Action.SHOOT in actions:
-                self.tryShoot()
-            if botlib.Action.ROTATE_LEFT_FINE in actions:
-                self.rotate(1, True)
-            elif botlib.Action.ROTATE_RIGHT_FINE in actions:
-                self.rotate(-1, True)
-            elif botlib.Action.ROTATE_RIGHT in actions:
-                self.rotate(-1, False)
-            elif botlib.Action.ROTATE_LEFT in actions:
-                self.rotate(1, False)
 
         separation = self.advance()
 
@@ -564,15 +568,31 @@ while True:
         gravitywell.animationStep()
 
     if game.state == GameState.PLAYERING:
-        fineMode = keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT]
+        actions = []
 
-        game.players[0].rotate(keystates[pygame.K_LEFT] - keystates[pygame.K_RIGHT], fineMode)
+        fine_mode = (keystates[pygame.K_LSHIFT] or keystates[pygame.K_RSHIFT])
+
+        if keystates[pygame.K_LEFT] and fine_mode:
+            actions.append(botlib.Action.ROTATE_LEFT_FINE)
+        elif keystates[pygame.K_LEFT] and not fine_mode:
+            actions.append(botlib.Action.ROTATE_LEFT)
+
+        if keystates[pygame.K_RIGHT] and fine_mode:
+            actions.append(botlib.Action.ROTATE_RIGHT_FINE)
+        elif keystates[pygame.K_RIGHT] and not fine_mode:
+            actions.append(botlib.Action.ROTATE_RIGHT)
 
         if keystates[pygame.K_SPACE]:
-            game.players[0].tryShoot()
+            actions.append(botlib.Action.SHOOT)
 
-        if keystates[pygame.K_UP]:
-            game.players[0].thrust(fineMode)
+        if keystates[pygame.K_UP] and fine_mode:
+            actions.append(botlib.Action.THRUST_FINE)
+        elif keystates[pygame.K_UP] and not fine_mode:
+            actions.append(botlib.Action.THRUST)
+
+        game.players[0].perform_actions(actions)
+        if game.singleplayer:
+            game.players[1].perform_actions()
 
         removebullets = []
         for bullet in game.bullets:
