@@ -650,7 +650,7 @@ while True:
         screen.blit(bgimg, (0, 0))
 
     if prefs['Game.simple_graphics'] or gravitywell.image is None:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
-        pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), 50)
+        pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), settings['GW.radius'].val)
     else:
         # 1px on either side for fuzzy/semi-transparent borders
         screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val - 1, -settings['GW.radius'].val - 1))
