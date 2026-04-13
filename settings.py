@@ -97,9 +97,9 @@ settings = {
     # How much damage a single hit incurs
     'Bullet.damage':   Setting(   0.06,'B', lambda n: int(round(n * 255)), lambda n: n / 255),
     # How heavy a bullet is (kilograms)
-    'Bullet.mass':     Setting(   5,   'B', lambda n: int(round(n * 255)), lambda n: n / 255),
+    'Bullet.mass':     Setting(   5,   'B', lambda n: int(round(n * 10)), lambda n: n / 10),
     # Impulse with which the bullet is launched, either relative to the craft or relative to the star (see Bullet.relspeed)
-    'Bullet.speed':    Setting(  50,   'B', lambda n: int(round(n * 10)),  lambda n: n / 10),
+    'Bullet.speed':    Setting(  50,   'B', lambda n: int(round(n * 2)),  lambda n: n / 2),
     # Should bullets fly with 'absolute' (relative to star) speed or with 'relative' (relative to the craft) speed?
     'Bullet.relspeed': Setting(True,   'B', lambda b: 1 if b else 0,       lambda b: True if b == 1 else False),
     # Size of the bullet, visually and collision-wise
