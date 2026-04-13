@@ -37,9 +37,9 @@ class Player(Body):
         self.img = self.img.convert_alpha()
         self.spr = pygame.sprite.Sprite()
         self.spr.rect = self.img.get_rect()
-        self.spr.mask = pygame.mask.from_surface(self.img)
         # the maximum width/height we can have as we rotate 0-360 degrees
         self.rotatedMaxSize = max(self.spr.rect.width, self.spr.rect.height)
+        self.rotatedImages = {}
 
         Body.__init__(self)
 
@@ -99,8 +99,13 @@ class Player(Body):
             self.updateRotatedSprite()
 
     def updateRotatedSprite(self):
-        self.rotated_image = pygame.transform.rotate(self.img, self.angle)
-        self.spr.mask = pygame.mask.from_surface(self.rotated_image)
+        # Maintaining this image cache for 2 players seems to take ~4 MiB of RAM and improves headless performance by ~40%
+        if int(self.angle) in self.rotatedImages:
+            self.rotated_image, self.spr.mask = self.rotatedImages[int(self.angle)]
+        else:
+            self.rotated_image = pygame.transform.rotate(self.img, self.angle)
+            self.spr.mask = pygame.mask.from_surface(self.rotated_image)
+            self.rotatedImages[int(self.angle)] = (self.rotated_image, self.spr.mask)
 
     def perform_actions(self, actions=None):
         new_bullet = None
