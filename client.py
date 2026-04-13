@@ -166,11 +166,6 @@ class Player(Body):
 
         self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
 
-        # TODO do this in the game object or even global scope! Not once for each player o.o
-        if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
-            # If you run into each other, you both die. Should have run, you fools
-            game.playerDied(both=True)
-
         radiative_power = settings['GW.radiation'].val / (separation * separation) * 1000
         self.batterylevel = min(settings['Player.battSize'].val, self.batterylevel + radiative_power)
 
@@ -727,6 +722,10 @@ while True:
         game.players[0].update()
         if game.singleplayer:
             game.players[1].update()
+
+        if pygame.sprite.collide_mask(game.players[0].spr, game.players[1].spr) is not None:
+            # If you run into each other, you both die. Should have run, you fools!
+            game.playerDied(both=True)
 
         if not args['headless']:
             for player in game.players:
