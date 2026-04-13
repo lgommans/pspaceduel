@@ -220,6 +220,7 @@ class Game:
                 statusmessage = 'You died. Your score: ' + str(self.score) + '. Press Enter to restart.'
                 if not self.singleplayer and sendpacket:
                     self.sendtoQueued(b'\x01')
+        print(statusmessage)
 
     def newRound(self):
         if self.roundscore > 0:
@@ -505,8 +506,10 @@ Usage:
     {me} --zeroplayer [delay=1] [speed=1] [bot_name_1] [bot_name_2]
        Watch two bots play, waiting 'delay' seconds between rounds.
        If you do not specify a delay, one second will be used.
-       If you do not specify a a speed, the default will be used.
-       A special string "inf", for infinity, is accepted as speed.
+       If you do not specify a a speed, the game will run at normal
+       speed. A special string "inf" (infinity) is accepted as speed,
+       as well as the string "headless" which additionally does not
+       display the game but simulates it in the background.
        Bots whose name you do not specify will be chosen at random.
 
     {me} --list-bots
@@ -537,6 +540,7 @@ For running a server, see `server.py`.
         'bot_names':    [],
         'round_delay':  1,
         'speed':        1,
+        'headless':     False,
     }
 
     if '--singleplayer' in argv:
@@ -549,7 +553,10 @@ For running a server, see `server.py`.
         if len(argv) > 2:
             args['round_delay'] = float(argv[2])
         if len(argv) > 3:
-            if argv[3] == 'inf':
+            if argv[3] == 'headless':
+                args['speed'] = float('inf')
+                args['headless'] = True
+            elif argv[3] == 'inf':
                 args['speed'] = float('inf')
             else:
                 args['speed'] = float(argv[3])
@@ -569,14 +576,21 @@ SCREENSIZE = (1900, 980)
 
 args = parseArgs(sys.argv)
 
+statusmessage = ''
+
 # don't just pygame.init() because it will hang and not quit when you do pygame.quit();sys.exit();. Stackoverflow suggests in 2013 this was a Wheezy bug, but it works on a
 # newer-than-Wheezy system, and then does not work on an even newer system than that, so... initializing only what we need is also literally 20 times faster (0.02 instead of 0.4 s)!
-pygame.display.init()
+if args['headless']:
+    os.environ['SDL_VIDEODRIVER'] = 'dummy'  # prevents a window from being shown
+pygame.display.init()  # need this for image manipulations, which are used for pixel-accurate collisions
+screen = pygame.display.set_mode(SCREENSIZE)
 pygame.font.init()
 font_statusMsg = pygame.font.SysFont(None, 48)
 fpslimiter = pygame.time.Clock()
-screen = pygame.display.set_mode(SCREENSIZE)
-statusmessage = ''
+
+if not args['headless']:
+    if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
+        bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
 
 if not args['singleplayer']:
     # if dns lookup is needed, do this now (works also if you enter an IP, gethostbyname will just return it literally)
@@ -585,9 +599,6 @@ if not args['singleplayer']:
         SERVER = prepareHostAndPort(args['server'])
     else:
         SERVER = prepareHostAndPort(prefs['Multiplayer.server'])
-
-if not prefs['Game.simple_graphics'] and prefs['Game.backgroundimage'] is not None:
-    bgimg = pygame.transform.scale(pygame.image.load(prefs['Game.backgroundimage']), SCREENSIZE).convert_alpha()
 
 players = []
 if args['zeroplayer']:
@@ -618,7 +629,8 @@ gravitywell = GravityWell()
 
 if game.singleplayer:
     game.initSinglePlayer()
-    gravitywell.setImage(settings['GW.imagenumber'].val)
+    if not args['headless']:
+        gravitywell.setImage(settings['GW.imagenumber'].val)
 else:
     game.connect(SERVER)
 
@@ -634,17 +646,18 @@ while True:
     if keystates[pygame.K_ESCAPE]:
         quitProgram(reason='escaped the arena')
 
-    if prefs['Game.simple_graphics'] or prefs['Game.backgroundimage'] is None:
-        screen.fill((0, 0, 0))
-    else:
-        screen.blit(bgimg, (0, 0))
+    if not args['headless']:
+        if prefs['Game.simple_graphics'] or prefs['Game.backgroundimage'] is None:
+            screen.fill((0, 0, 0))
+        else:
+            screen.blit(bgimg, (0, 0))
 
-    if prefs['Game.simple_graphics'] or gravitywell.image is None:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
-        pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), settings['GW.radius'].val)
-    else:
-        # 1px on either side for fuzzy/semi-transparent borders
-        screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val - 1, -settings['GW.radius'].val - 1))
-        gravitywell.animationStep()
+        if prefs['Game.simple_graphics'] or gravitywell.image is None:  # draw circle non-anti-aliased: 31µs; blit regular surface: 288-600µs; blit converted surface with alpha: ~60µs
+            pygame.draw.circle(screen, (255, 255, 0), coordsToPx(0, 0), settings['GW.radius'].val)
+        else:
+            # 1px on either side for fuzzy/semi-transparent borders
+            screen.blit(gravitywell.image, coordsToPx(-settings['GW.radius'].val - 1, -settings['GW.radius'].val - 1))
+            gravitywell.animationStep()
 
     if game.state == GameState.PLAYERING:
         actions = []
@@ -682,7 +695,8 @@ while True:
         for player in game.players:
             removebullets = pygame.sprite.spritecollide(player.spr, game.bullets, False, pygame.sprite.collide_circle)
             for bullet in removebullets:
-                game.sparks.append(Spark(bullet.pos))
+                if not args['headless']:
+                    game.sparks.append(Spark(bullet.pos))
                 game.bullets.remove(bullet)
                 # If we're in singleplayer, setting `player` health simply works as expected.
                 # In multiplayer, we receive hit and health info from the other player so, in that case, alter the player health only if we hit ourselves (game.players[0])
@@ -691,71 +705,73 @@ while True:
                 else:
                     game.players[0].hitsdealt += 1
 
-        removesparks = []
-        for spark in game.sparks:
-            died = spark.advance(screen)
-            if died:
-                removesparks.append(spark)
-            else:
-                screen.blit(spark.img, coordsToPx(roundi(spark.pos.x), roundi(spark.pos.y)))
-        for spark in removesparks:
-            game.sparks.remove(spark)
+        if not args['headless']:
+            removesparks = []
+            for spark in game.sparks:
+                died = spark.advance(screen)
+                if died:
+                    removesparks.append(spark)
+                elif not args['headless']:
+                    screen.blit(spark.img, coordsToPx(roundi(spark.pos.x), roundi(spark.pos.y)))
+            for spark in removesparks:
+                game.sparks.remove(spark)
 
-        for bulletpos in game.remotebullets + [bullet.rect.center for bullet in game.bullets]:
-            pygame.draw.circle(screen, prefs['Bullet.color'], coordsToPx(*bulletpos), settings['Bullet.size'].val)
+            for bulletpos in game.remotebullets + [bullet.rect.center for bullet in game.bullets]:
+                pygame.draw.circle(screen, prefs['Bullet.color'], coordsToPx(*bulletpos), settings['Bullet.size'].val)
 
         game.players[0].update()
         if game.singleplayer:
             game.players[1].update()
 
-        for player in game.players:
-            player.draw(screen)
+        if not args['headless']:
+            for player in game.players:
+                player.draw(screen)
 
-            idis = player.rotatedMaxSize * prefs['Player.indicator_distance']
-            iwidth = roundi(player.rotatedMaxSize * prefs['Player.indicator_width'])
-            iheight = roundi(player.rotatedMaxSize * prefs['Player.indicator_height'])
+                idis = player.rotatedMaxSize * prefs['Player.indicator_distance']
+                iwidth = roundi(player.rotatedMaxSize * prefs['Player.indicator_width'])
+                iheight = roundi(player.rotatedMaxSize * prefs['Player.indicator_height'])
 
-            # Use int() for size calculations instead of roundi() because it'll do this "rounding towards the even choice" and you get it trying to draw on even coordinates of the screen (jumping around)
-            # Draw battery level indicators
-            bl = player.batterylevel / settings['Player.battSize'].val
-            bgcol = prefs['Player.indicator_energy_color_bg']
-            poweryellow = prefs['Player.indicator_energy_color_good']
-            if player.batterylevel < (settings['Player.thrust'].val / settings['Player.thrust/kJ'].val):
-                indicatorcolor = prefs['Player.indicator_energy_color_out']
-            elif player.batterylevel < settings['Player.kJ/shot'].val:
-                indicatorcolor = prefs['Player.indicator_energy_color_low']
-            else:
-                indicatorcolor = poweryellow
-            x = int(player.pos.x - (iwidth / 2))
-            y = int(player.pos.y + (player.rotatedMaxSize / 2) + idis)
-            # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y + 1), int((iwidth + 2)),      int(iheight + 2)))
-            # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y + 2), int((iwidth + 0)),      int(iheight + 0)))
-            # battery level (drawn over the black area)
-            pygame.draw.rect(screen, poweryellow   , (*coordsToPx(x - 0, y + 2), int((iwidth + 0) * bl), int(iheight + 0)))
+                # Use int() for size calculations instead of roundi() because it'll do this "rounding towards the even choice" and you get it trying to draw on even coordinates of the screen (jumping around)
+                # Draw battery level indicators
+                bl = player.batterylevel / settings['Player.battSize'].val
+                bgcol = prefs['Player.indicator_energy_color_bg']
+                poweryellow = prefs['Player.indicator_energy_color_good']
+                if player.batterylevel < (settings['Player.thrust'].val / settings['Player.thrust/kJ'].val):
+                    indicatorcolor = prefs['Player.indicator_energy_color_out']
+                elif player.batterylevel < settings['Player.kJ/shot'].val:
+                    indicatorcolor = prefs['Player.indicator_energy_color_low']
+                else:
+                    indicatorcolor = poweryellow
+                x = int(player.pos.x - (iwidth / 2))
+                y = int(player.pos.y + (player.rotatedMaxSize / 2) + idis)
+                # outer rectangle
+                pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y + 1), int((iwidth + 2)),      int(iheight + 2)))
+                # inner black area (same area as above but -1px on each side)
+                pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y + 2), int((iwidth + 0)),      int(iheight + 0)))
+                # battery level (drawn over the black area)
+                pygame.draw.rect(screen, poweryellow   , (*coordsToPx(x - 0, y + 2), int((iwidth + 0) * bl), int(iheight + 0)))
 
-            # Draw health indicators
-            healthgreen = prefs['Player.indicator_health_color_good']
-            indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else prefs['Player.indicator_health_color_low']
-            bgcol = prefs['Player.indicator_health_color_bg']
-            x = int(player.pos.x - (iwidth / 2))
-            y = int(player.pos.y - (player.rotatedMaxSize / 2) - idis)
-            # outer rectangle
-            pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y - 2), int((iwidth + 2)),                 int(iheight + 2)))
-            # inner black area (same area as above but -1px on each side)
-            pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y - 1), int((iwidth + 0)),                 int(iheight + 0)))
-            # health level (drawn over the black area)
-            pygame.draw.rect(screen, healthgreen,    (*coordsToPx(x - 0, y - 1), int((iwidth + 0) * player.health), int(iheight + 0)))
+                # Draw health indicators
+                healthgreen = prefs['Player.indicator_health_color_good']
+                indicatorcolor = healthgreen if player.health > settings['Bullet.damage'].val else prefs['Player.indicator_health_color_low']
+                bgcol = prefs['Player.indicator_health_color_bg']
+                x = int(player.pos.x - (iwidth / 2))
+                y = int(player.pos.y - (player.rotatedMaxSize / 2) - idis)
+                # outer rectangle
+                pygame.draw.rect(screen, indicatorcolor, (*coordsToPx(x - 1, y - 2), int((iwidth + 2)),                 int(iheight + 2)))
+                # inner black area (same area as above but -1px on each side)
+                pygame.draw.rect(screen, bgcol,          (*coordsToPx(x - 0, y - 1), int((iwidth + 0)),                 int(iheight + 0)))
+                # health level (drawn over the black area)
+                pygame.draw.rect(screen, healthgreen,    (*coordsToPx(x - 0, y - 1), int((iwidth + 0) * player.health), int(iheight + 0)))
 
-        if prefs['Game.show_aim_guide']:
-            b = Bullet(game.players[0], virtual=True)
-            for i in range(int(prefs['Game.aim_guide_distance'] * settings['Game.FPS'].val)):
-                oldpos = pygame.math.Vector2(b.pos)
-                died = b.advance(SCREENSIZE)
-                if died:
-                    break
-                pygame.draw.line(screen, prefs['Game.aim_guide_color'], coordsToPx(*oldpos), coordsToPx(*b.pos))
+            if prefs['Game.show_aim_guide']:
+                b = Bullet(game.players[0], virtual=True)
+                for i in range(int(prefs['Game.aim_guide_distance'] * settings['Game.FPS'].val)):
+                    oldpos = pygame.math.Vector2(b.pos)
+                    died = b.advance(SCREENSIZE)
+                    if died:
+                        break
+                    pygame.draw.line(screen, prefs['Game.aim_guide_color'], coordsToPx(*oldpos), coordsToPx(*b.pos))
 
 
         game.sendUpdatePacket()
@@ -777,9 +793,10 @@ while True:
 
     game.framecounter += 1
 
-    pygame.display.flip()
-    if args['speed'] < float('inf'):
-        frametime = fpslimiter.tick(settings['Game.FPS'].val / args['speed'])
-        if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
-            print('frametime was', frametime)
+    if not args['headless']:
+        pygame.display.flip()
+        if args['speed'] < float('inf'):
+            frametime = fpslimiter.tick(settings['Game.FPS'].val / args['speed'])
+            if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
+                print('frametime was', frametime)
 

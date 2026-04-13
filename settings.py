@@ -70,7 +70,7 @@ prefs = {
     'Player.indicator_energy_color_bg':   (  0,   0,   0),
 
     # Number of frames for which a spark will exist, randomly chosen within this interval
-    'Spark.lifespan': (5, 11),
+    'Spark.lifespan': (7, 15),
     # Number of pixels it randomly moves per frame in each direction, randomly chosen within this interval. The direction (positive or negative) is a 50/50 chance.
     'Spark.movement': (1, 2),
     # The degrees it rotates per frame, randomly chosen within this interval. The direction (positive or negative rotation) is a 50/50 chance.
