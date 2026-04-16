@@ -61,19 +61,17 @@ while True:
 
             print('New client from', addr, 'joined. Number of players, including them:', len(clients))
 
-        else:
-            # sender is known client
+        else: # sender is known client
+
             if msg.startswith(mplib.playerquits):
-                # do not ack this message as it might be unconfirmed
                 if addr in clients:
-                    if 'partner' in clients[addr]:
+                    if 'partner' in clients[addr] and clients[addr]['partner'] in clients:
                         sock.sendto(msg, clients[addr]['partner'])
-                        print(addr, 'quit. We also terminated their partner at', clients[addr]['partner'], '  Current player count:', len(clients))
                         del clients[clients[addr]['partner']]
-                        del clients[addr]
+                        print(addr, 'quit. We also terminated their partner at', clients[addr]['partner'], '  New player count:', len(clients) - 1)
                     else:
-                        del clients[addr]
-                        print(addr, 'quit. Current player count:', len(clients))
+                        print(addr, 'quit. New player count:', len(clients) - 1)
+                    del clients[addr]
                 continue
 
             clients[addr]['lastseen'] = time.time()
@@ -85,15 +83,16 @@ while True:
                 else:
                     clients[addr]['state'] = STATE_SHOWN_WORTHINESS
                     found = False
-                    for client in clients:
-                        if clients[client]['state'] == STATE_SHOWN_WORTHINESS and client != addr:  # if there is another client waiting, match them up!
+                    for other_client in clients:
+                        if clients[other_client]['state'] == STATE_SHOWN_WORTHINESS and other_client != addr:  # if there is another client waiting, match them up!
                             found = True
-                            clients[client]['partner'] = addr
-                            clients[client]['state'] = STATE_MARRIED_A_PLAYER
-                            clients[addr]['partner'] = client
+                            clients[other_client]['partner'] = addr
+                            clients[other_client]['state'] = STATE_MARRIED_A_PLAYER
+                            clients[addr]['partner'] = other_client
                             clients[addr]['state'] = STATE_MARRIED_A_PLAYER
-                            sock.sendto(mplib.urplayertwo, addr)
-                            sock.sendto(mplib.playerfound, client)
+                            sock.sendto(mplib.urplayertwo, addr)  # the client which just completed the handshake is player 2 because they came later than the one who was already in the clients list
+                            sock.sendto(mplib.playerfound, other_client)
+                            break
 
                     if not found:
                         sock.sendto(mplib.urplayerone, addr)
