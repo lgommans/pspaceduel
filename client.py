@@ -303,7 +303,7 @@ class Game:
                 self.sock.sendto(reply, SERVER)
                 self.sock.sendto(reply, ('127.0.0.1', self.sock.getsockname()[1]))  # also send it to ourselves
             elif msg == mplib.urplayertwo:
-                statusmessage = 'Server found a match! Waiting for the other player to send game data...'
+                statusmessage = 'Server found a match! Waiting for the other player to send game settings...'
                 self.players[0].n = 2
                 self.players[1].n = 1
                 self.state = GameState.MATCHED
@@ -355,6 +355,7 @@ class Game:
                     self.players[1].health = health / 255
                     self.players[1].angle = angle * 1.5
                     self.players[1].updateRotatedSprite()
+                    self.players[1].spr.rect.center = (roundi(self.players[1].pos.x), roundi(self.players[1].pos.y))
 
                     if hitsfromtheirbullets > 0:
                         self.players[0].health = max(0, self.players[0].health - (settings['Bullet.damage'].val * hitsfromtheirbullets))
