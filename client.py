@@ -484,9 +484,9 @@ def coordsToPx(x, y):
 def bot_list_iterator():
     with os.scandir(BOTS_DIRECTORY) as directory:
         for entry in directory:
-            if not entry.is_file() or not entry.name.endswith('.py'):
+            if not entry.is_dir() or not os.path.isfile(f'{BOTS_DIRECTORY}/{entry.name}/__init__.py'):
                 continue
-            yield entry.name[ : -3]
+            yield entry.name
 
 def parseArgs(argv):
     if '-h' in argv or '--help' in argv:
