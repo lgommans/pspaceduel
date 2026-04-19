@@ -815,6 +815,4 @@ while True:
         pygame.display.flip()
         if args['speed'] < float('inf'):
             frametime = fpslimiter.tick(settings['Game.FPS'].val / args['speed'])
-            if frametime * 0.9 > (1 / settings['Game.FPS'].val) * 1000:  # 10% margin because it will sleep longer sometimes to keep the fps *below* the target amount
-                print('frametime was', frametime)
 
