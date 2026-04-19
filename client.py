@@ -26,6 +26,7 @@ class Player(Body):
               The action list must consist of zero or more values from botlib.Action; repetitions within the same list have no effect.
               The game state ('game' parameter for bot.step) is currently just the game object, which can be used to cheat. Assume that future versions present a read-only copy.
               If a bot raises any exception, the game is undecided (neither drawn, won, nor lost). It is up to the person running the game to handle this situation.
+              The game will call bot.gameover(result) with a value from botlib.Result to indicate whether the bot has won, tied, or lost.
         """
         img = pygame.image.load(f'res/player{n}.png')
         rect = img.get_rect()
@@ -211,15 +212,27 @@ class Game:
             statusmessage = 'You tied: 1 point! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
             if not self.singleplayer and sendpacket:
                 self.sendtoQueued(b'\x01\x01')
+            if self.players[0].bot is not None:
+                self.players[0].bot.gameover(botlib.Result.TIE)
+            if self.players[1].bot is not None:
+                self.players[1].bot.gameover(botlib.Result.TIE)
         else:
             if other:
                 self.roundscore = 5
                 statusmessage = 'You won: 5 points! Your score: ' + str(self.score + self.roundscore) + '. Press Enter to restart.'
+                if self.players[0].bot is not None:
+                    self.players[0].bot.gameover(botlib.Result.WON)
+                if self.players[1].bot is not None:
+                    self.players[1].bot.gameover(botlib.Result.LOST)
             else:
                 self.roundscore = 0
                 statusmessage = 'You died. Your score: ' + str(self.score) + '. Press Enter to restart.'
                 if not self.singleplayer and sendpacket:
                     self.sendtoQueued(b'\x01')
+                if self.players[0].bot is not None:
+                    self.players[0].bot.gameover(botlib.Result.LOST)
+                if self.players[1].bot is not None:
+                    self.players[1].bot.gameover(botlib.Result.WON)
         print(statusmessage)
 
     def newRound(self):

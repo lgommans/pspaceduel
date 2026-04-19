@@ -11,3 +11,6 @@ def step(game):
     action = random.choice(list(botlib.Action))
     return [action]
 
+def gameover(result):
+    pass
+

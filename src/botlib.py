@@ -11,6 +11,11 @@ class Action(Enum):
     THRUST = 7
     THRUST_FINE = 8
 
+class Result(Enum):
+    LOST = -1
+    TIE = 0
+    WON = 1
+
 def get_storage_directory():
     # the zeroth frame record is this function; the next frame on the stack is the one where we are being called from
     caller_frame = inspect.stack()[1]
