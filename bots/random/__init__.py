@@ -1,16 +1,20 @@
 import random
 import src.botlib as botlib
 
-def reset(playerobj):
-    pass
+class Bot:
+    def __init__(self, player):
+        self.player = player
 
-def step(game):
-    if random.randint(0, 1) == 1:
-        return []
+    def reset(self):
+        pass
 
-    action = random.choice(list(botlib.Action))
-    return [action]
+    def step(self, game):
+        if random.randint(0, 1) == 1:
+            return []
 
-def gameover(result):
-    pass
+        action = random.choice(list(botlib.Action))
+        return [action]
+
+    def gameover(self, result):
+        pass
 

@@ -20,13 +20,14 @@ class Player(Body):
         Parameters:
           n: the player number (int)
           game: the instance of the game object which is initialising this player
-          bot: str or None. If string, it must be an importable Python module (bot="bots.myAI" will try to include "./bots/myAI.py").
-              The game will call bot.reset(player) when a round is about to start (also the first round), passing the object of the player character which the bot controls.
-              The game will call bot.step(game) every time you may make a decision about what to do. Use the game state to make a decision and return an action list.
+          bot: str or None. If string, it must be an importable Python module (bot="bots.myAI" will try to include "./bots/myAI/__init__.py").
+              The game will then instantiate the Bot object within the module, so like: instance=myAI.Bot(playerobj).
+              The game will call instance.reset() when a round is about to start (also the first round).
+              The game will call instance.step(game) every time you may make a decision about what to do. Use the game state to make a decision and return an action list.
               The action list must consist of zero or more values from botlib.Action; repetitions within the same list have no effect.
-              The game state ('game' parameter for bot.step) is currently just the game object, which can be used to cheat. Assume that future versions present a read-only copy.
+              The game state ('game' parameter for instance.step) is currently just the game object, which can be used to cheat. Assume that future versions present a read-only copy.
               If a bot raises any exception, the game is undecided (neither drawn, won, nor lost). It is up to the person running the game to handle this situation.
-              The game will call bot.gameover(result) with a value from botlib.Result to indicate whether the bot has won, tied, or lost.
+              The game will call instance.gameover(result) with a value from botlib.Result to indicate whether the bot has won, tied, or lost.
         """
         img = pygame.image.load(f'res/player{n}.png')
         rect = img.get_rect()
@@ -47,7 +48,8 @@ class Player(Body):
         if bot is None:
             self.bot = None
         else:
-            self.bot = importlib.import_module(bot)
+            module = importlib.import_module(bot)
+            self.bot = module.Bot(self)
         self.reset()
 
     def reset(self):
@@ -61,7 +63,7 @@ class Player(Body):
             self.spr.rect.center = (roundi(self.pos.x), roundi(self.pos.y))
         self.updateRotatedSprite()
         if self.bot is not None:
-            self.bot.reset(self)
+            self.bot.reset()
 
     def tryShoot(self):
         if self.reloadstate <= 0 and self.batterylevel > settings['Player.kJ/shot'].val:
